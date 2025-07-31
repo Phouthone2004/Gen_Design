@@ -42,6 +42,7 @@ dependencies:
   sqflite_common_ffi: ^2.3.6
   printing: ^5.14.2
   pdf: ^3.11.3
+  flutter_localization: ^0.3.3
 
 dev_dependencies:
   flutter_test:

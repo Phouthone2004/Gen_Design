@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../data/item_model.dart';
 import '../../logic/home_vm.dart';
+import '../core/app_currencies.dart';
 
 Future<void> showAddItemDialog(
   BuildContext context,
@@ -10,27 +11,37 @@ Future<void> showAddItemDialog(
   ItemModel? existingItem,
 }) async {
   final formKey = GlobalKey<FormState>();
-  
-  final titleController = TextEditingController(text: existingItem?.title);
+ 
+  String _getOriginalTitle(String? fullTitle) {
+    if (fullTitle == null) return '';
+    int dotIndex = fullTitle.indexOf('. ');
+    if (dotIndex != -1 && dotIndex < 3) {
+      return fullTitle.substring(dotIndex + 2);
+    }
+    return fullTitle;
+  }
+
+  final titleController = TextEditingController(text: _getOriginalTitle(existingItem?.title));
   final descriptionController = TextEditingController(text: existingItem?.description);
-  final amountController = TextEditingController(
-    text: existingItem != null 
-          ? NumberFormat("#,##0").format(existingItem.amount) 
-          : '',
+  
+  final amountKipController = TextEditingController(
+    text: existingItem != null && existingItem.amount > 0
+        ? NumberFormat("#,##0").format(existingItem.amount)
+        : '',
+  );
+  final amountThbController = TextEditingController(
+    text: existingItem != null && existingItem.amountThb > 0
+        ? NumberFormat("#,##0").format(existingItem.amountThb)
+        : '',
+  );
+  final amountUsdController = TextEditingController(
+    text: existingItem != null && existingItem.amountUsd > 0
+        ? NumberFormat("#,##0").format(existingItem.amountUsd)
+        : '',
   );
 
   bool showCalendar = existingItem?.selectedDate != null;
-  bool showIcon = existingItem?.selectedIcon != null;
   DateTime? selectedDate = existingItem?.selectedDate;
-  IconData? selectedIcon = existingItem?.selectedIcon;
-  
-  const List<IconData> constructionIcons = [
-    Icons.foundation, Icons.house_siding, Icons.apartment, Icons.carpenter,
-    Icons.construction, Icons.square_foot, Icons.architecture, Icons.engineering,
-    Icons.design_services, Icons.plumbing, Icons.lightbulb,
-    Icons.roofing, Icons.stairs, Icons.fence, Icons.meeting_room,
-    Icons.handyman, Icons.gite, Icons.location_city, Icons.home_work,
-  ];
 
   return showDialog(
     context: context,
@@ -56,16 +67,24 @@ Future<void> showAddItemDialog(
                       decoration: const InputDecoration(labelText: 'ຄຳອະທິບາຍ', icon: Icon(Icons.description)),
                       validator: (v) => v!.isEmpty ? 'ກະລຸນາໄສຄຳອະທິບາຍ' : null,
                     ),
-                    const SizedBox(height: 8),
+                    const Divider(height: 24),
                     TextFormField(
-                      controller: amountController,
-                      decoration: const InputDecoration(labelText: 'ຈຳນວນເງິນ (ກີບ)', icon: Icon(Icons.attach_money)),
+                      controller: amountKipController,
+                      decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.KIP.laoName})', icon: Text(Currency.KIP.symbol, style: const TextStyle(fontSize: 18))),
                       keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        CurrencyInputFormatter(),
-                      ],
-                      validator: (v) => v!.isEmpty ? 'ກະລຸນາໄສຈຳນວນເງິນ' : null,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
+                    ),
+                    TextFormField(
+                      controller: amountThbController,
+                      decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.THB.laoName})', icon: Text(Currency.THB.symbol, style: const TextStyle(fontSize: 18))),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
+                    ),
+                    TextFormField(
+                      controller: amountUsdController,
+                      decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.USD.laoName})', icon: Text(Currency.USD.symbol, style: const TextStyle(fontSize: 18))),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
                     ),
                     const Divider(height: 24),
                     CheckboxListTile(
@@ -74,7 +93,9 @@ Future<void> showAddItemDialog(
                       onChanged: (bool? value) {
                         setState(() {
                           showCalendar = value!;
-                          if (!showCalendar) selectedDate = null;
+                          if (!showCalendar) {
+                            selectedDate = null;
+                          }
                         });
                       },
                       controlAffinity: ListTileControlAffinity.leading,
@@ -85,37 +106,9 @@ Future<void> showAddItemDialog(
                         icon: const Icon(Icons.calendar_today),
                         label: Text(selectedDate == null ? 'ເລືອກວັນທີ' : DateFormat('dd MMMM yyyy').format(selectedDate!)),
                         onPressed: () async {
-                          final DateTime? picked = await showDatePicker(
-                            context: context,
-                            initialDate: selectedDate ?? DateTime.now(),
-                            firstDate: DateTime(2000),
-                            lastDate: DateTime(2101),
-                          );
+                          final DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2101),);
                           if (picked != null && picked != selectedDate) {
                             setState(() { selectedDate = picked; });
-                          }
-                        },
-                      ),
-                    CheckboxListTile(
-                      title: const Text("ແກ້ໄຂໄອຄ້ອນ"),
-                      value: showIcon,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          showIcon = value!;
-                          if (!showIcon) selectedIcon = null;
-                        });
-                      },
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    if (showIcon)
-                      ElevatedButton.icon(
-                        icon: Icon(selectedIcon ?? Icons.add_reaction),
-                        label: Text(selectedIcon == null ? 'ເລືອກໄອຄ້ອນ' : 'ປ່ຽນໄອຄອນ'),
-                        onPressed: () async {
-                          final IconData? pickedIcon = await _showIconPickerDialog(context, constructionIcons, selectedIcon);
-                          if (pickedIcon != null) {
-                            setState(() { selectedIcon = pickedIcon; });
                           }
                         },
                       ),
@@ -131,30 +124,42 @@ Future<void> showAddItemDialog(
               ElevatedButton(
                 onPressed: () {
                   if (formKey.currentState!.validate()) {
-                    final cleanAmountString = amountController.text.replaceAll(',', '');
-                    
+                    final cleanAmountKip = amountKipController.text.replaceAll(',', '');
+                    final cleanAmountThb = amountThbController.text.replaceAll(',', '');
+                    final cleanAmountUsd = amountUsdController.text.replaceAll(',', '');
+
+                    final double amountKip = double.tryParse(cleanAmountKip) ?? 0.0;
+                    final double amountThb = double.tryParse(cleanAmountThb) ?? 0.0;
+                    final double amountUsd = double.tryParse(cleanAmountUsd) ?? 0.0;
+                   
                     if (existingItem == null) {
-                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                      // เพิ่ม sortOrder เข้าไปเพื่อให้ constructor ทำงานได้
                       final newItem = ItemModel(
                         title: titleController.text,
                         description: descriptionController.text,
-                        amount: double.parse(cleanAmountString),
+                        amount: amountKip,
+                        amountThb: amountThb,
+                        amountUsd: amountUsd,
                         selectedDate: selectedDate,
-                        selectedIcon: selectedIcon,
-                        isPinned: 0,
-                        sortOrder: 0, // ใส่ค่าเริ่มต้นไปก่อน, ViewModel จะคำนวณค่าที่ถูกต้องให้อีกที
+                        sortOrder: 0, 
                       );
-                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                       vm.addItem(newItem);
                     } else {
-                      final updatedItem = existingItem.copyWith(
+                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                      // แก้ไขโดยการสร้าง Instance ใหม่ เพื่อให้ค่า null ถูกบันทึกได้ถูกต้อง
+                      final updatedItem = ItemModel(
+                        id: existingItem.id,
                         title: titleController.text,
                         description: descriptionController.text,
-                        amount: double.parse(cleanAmountString),
-                        selectedDate: selectedDate,
-                        selectedIcon: selectedIcon,
+                        amount: amountKip,
+                        amountThb: amountThb,
+                        amountUsd: amountUsd,
+                        selectedDate: selectedDate, // ส่งค่า null ไปได้เมื่อติ๊กออก
+                        // คงค่าเดิมที่ไม่ถูกแก้ไขใน dialog
+                        sortOrder: existingItem.sortOrder,
+                        creationTimestamp: existingItem.creationTimestamp,
+                        lastActivityTimestamp: existingItem.lastActivityTimestamp,
                       );
+                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                       vm.updateItem(updatedItem);
                     }
                     Navigator.of(dialogContext).pop();
@@ -162,56 +167,6 @@ Future<void> showAddItemDialog(
                 },
                 child: const Text('ບັນທຶກ'),
               ),
-            ],
-          );
-        },
-      );
-    },
-  );
-}
-
-Future<IconData?> _showIconPickerDialog(BuildContext context, List<IconData> icons, IconData? currentIcon) {
-  IconData? tempSelectedIcon = currentIcon;
-
-  return showDialog<IconData>(
-    context: context,
-    builder: (BuildContext dialogContext) {
-      return StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('ເລືອກໄອຄອນ'),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: GridView.builder(
-                shrinkWrap: true,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 5,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                ),
-                itemCount: icons.length,
-                itemBuilder: (context, index) {
-                  final icon = icons[index];
-                  final isSelected = tempSelectedIcon == icon;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() { tempSelectedIcon = icon; });
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.blue.shade100 : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: isSelected ? Colors.blue.shade700 : Colors.grey.shade300),
-                      ),
-                      child: Icon(icon, color: isSelected ? Colors.blue.shade800 : Colors.grey.shade800, size: 28),
-                    ),
-                  );
-                },
-              ),
-            ),
-            actions: <Widget>[
-              TextButton(child: const Text('ຍົກເລີກ'), onPressed: () => Navigator.of(context).pop()),
-              ElevatedButton(child: const Text('ຕົກລົງ'), onPressed: () => Navigator.of(context).pop(tempSelectedIcon)),
             ],
           );
         },

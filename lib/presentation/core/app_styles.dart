@@ -34,6 +34,13 @@ const LinearGradient headerGradient = LinearGradient(
 class AppTextStyles {
   static const String fontFamily = 'Saysettha OT';
 
+  static const TextStyle subText = TextStyle(
+    fontFamily: fontFamily,
+    color: Color.fromARGB(122, 255, 255, 255),
+    fontSize: 14,
+    // fontWeight: FontWeight.bold,
+  );
+
   static const TextStyle display = TextStyle(
     fontFamily: fontFamily,
     color: AppColors.textOnPrimary,

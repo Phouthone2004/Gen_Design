@@ -1,14 +1,14 @@
-// data/sub_item_model.dart
-
 class SubItemModel {
   final int? id;
-  final int parentId; // ID ของรายการหลัก
+  final int parentId;
   final String title;
   final String? description;
   final double? quantity;
   final String? unit;
   final double? laborCost;
+  final String? laborCostCurrency; // สกุลเงินค่าแรง
   final double? materialCost;
+  final String? materialCostCurrency; // สกุลเงินค่าวัสดุ
   final DateTime? selectedDate;
 
   SubItemModel({
@@ -19,7 +19,9 @@ class SubItemModel {
     this.quantity,
     this.unit,
     this.laborCost,
+    this.laborCostCurrency,
     this.materialCost,
+    this.materialCostCurrency,
     this.selectedDate,
   });
 
@@ -31,7 +33,9 @@ class SubItemModel {
     double? quantity,
     String? unit,
     double? laborCost,
+    String? laborCostCurrency,
     double? materialCost,
+    String? materialCostCurrency,
     DateTime? selectedDate,
   }) {
     return SubItemModel(
@@ -42,7 +46,9 @@ class SubItemModel {
       quantity: quantity ?? this.quantity,
       unit: unit ?? this.unit,
       laborCost: laborCost ?? this.laborCost,
+      laborCostCurrency: laborCostCurrency ?? this.laborCostCurrency,
       materialCost: materialCost ?? this.materialCost,
+      materialCostCurrency: materialCostCurrency ?? this.materialCostCurrency,
       selectedDate: selectedDate ?? this.selectedDate,
     );
   }
@@ -55,7 +61,9 @@ class SubItemModel {
         'quantity': quantity,
         'unit': unit,
         'laborCost': laborCost,
+        'laborCostCurrency': laborCostCurrency,
         'materialCost': materialCost,
+        'materialCostCurrency': materialCostCurrency,
         'selectedDate': selectedDate?.toIso8601String(),
       };
 
@@ -64,10 +72,12 @@ class SubItemModel {
         parentId: json['parentId'] as int,
         title: json['title'] as String,
         description: json['description'] as String?,
-        quantity: json['quantity'] as double?,
+        quantity: (json['quantity'] as num?)?.toDouble(),
         unit: json['unit'] as String?,
-        laborCost: json['laborCost'] as double?,
-        materialCost: json['materialCost'] as double?,
+        laborCost: (json['laborCost'] as num?)?.toDouble(),
+        laborCostCurrency: json['laborCostCurrency'] as String?,
+        materialCost: (json['materialCost'] as num?)?.toDouble(),
+        materialCostCurrency: json['materialCostCurrency'] as String?,
         selectedDate: json['selectedDate'] != null
             ? DateTime.parse(json['selectedDate'] as String)
             : null,
