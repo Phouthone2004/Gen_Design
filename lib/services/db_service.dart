@@ -20,7 +20,7 @@ class DBService {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 12, // อัปเกรดเวอร์ชัน DB
+      version: 13,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onConfigure: _onConfigure,
@@ -52,11 +52,12 @@ class DBService {
         sortOrder $integerType
       )
     ''');
-    
+  
     await db.execute('''
       CREATE TABLE sub_items (
         id $idType,
         parentId INTEGER NOT NULL,
+        childOf INTEGER,
         title $textType,
         description TEXT,
         quantity REAL,
@@ -84,12 +85,11 @@ class DBService {
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 11) {
-      // Logic for older versions
-    }
-
     if (oldVersion < 12) {
       await db.execute("ALTER TABLE quarterly_budgets ADD COLUMN selectedDate TEXT");
+    }
+    if (oldVersion < 13) {
+      await db.execute("ALTER TABLE sub_items ADD COLUMN childOf INTEGER");
     }
   }
 
@@ -110,7 +110,7 @@ class DBService {
     final db = await instance.database;
     return db.update('items', item.toMap(), where: 'id = ?', whereArgs: [item.id]);
   }
- 
+  
   Future<void> updateItems(List<ItemModel> items) async {
     final db = await instance.database;
     final batch = db.batch();
@@ -159,6 +159,17 @@ class DBService {
     final db = await instance.database;
     return db.update('sub_items', subItem.toMap(), where: 'id = ?', whereArgs: [subItem.id]);
   }
+
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  Future<void> updateSubItems(List<SubItemModel> subItems) async {
+    final db = await instance.database;
+    final batch = db.batch();
+    for (final subItem in subItems) {
+      batch.update('sub_items', subItem.toMap(), where: 'id = ?', whereArgs: [subItem.id]);
+    }
+    await batch.commit(noResult: true);
+  }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   Future<int> deleteSubItem(int id) async {
     final db = await instance.database;

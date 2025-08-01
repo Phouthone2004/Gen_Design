@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -10,148 +11,314 @@ import '../core/app_styles.dart';
 import '../core/app_currencies.dart';
 import '../page/detail_page.dart';
 import 'add_edit_item_dialog.dart';
+import 'settings_dialog.dart';
 
-class HomeContent extends StatelessWidget {
+// เปลี่ยนเป็น StatefulWidget เพื่อจัดการสถานะการ scroll
+class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(gradient: headerGradient),
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        body: Consumer<HomeViewModel>(
-          builder: (context, vm, child) {
-            if (vm.isLoading) {
-              return const Center(child: CircularProgressIndicator(color: Colors.white));
-            }
+  State<HomeContent> createState() => _HomeContentState();
+}
 
-            return CustomScrollView(
-              slivers: <Widget>[
-                SliverAppBar(
-                  backgroundColor: AppColors.primaryDark,
-                  surfaceTintColor: Colors.transparent,
-                  expandedHeight: 420.0,
-                  pinned: true,
-                  collapsedHeight: 70.0,
-                  actions: [
-                    IconButton(
-                      icon: Icon(
-                        vm.areAmountsVisible ? Icons.visibility : Icons.visibility_off,
-                        color: AppColors.textOnPrimary,
-                      ),
-                      onPressed: () {
-                        vm.toggleAmountVisibility();
-                      },
+class _HomeContentState extends State<HomeContent> {
+  final ScrollController _scrollController = ScrollController();
+  bool _isAppBarCollapsed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_scrollListener);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_scrollListener);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // Listener ที่จะคอยเช็คว่า AppBar ถูกย่อจนสุดหรือยัง
+  void _scrollListener() {
+    final isCollapsed = _scrollController.hasClients &&
+        _scrollController.offset > 250.0;
+    if (isCollapsed != _isAppBarCollapsed) {
+      setState(() {
+        _isAppBarCollapsed = isCollapsed;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<HomeViewModel>(
+      builder: (context, vm, child) {
+        if (vm.isSettingsLoading) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: CustomScrollView(
+            controller: _scrollController, // ผูก controller กับ scroll view
+            slivers: <Widget>[
+              SliverAppBar(
+                backgroundColor: AppColors.primaryDark,
+                surfaceTintColor: Colors.transparent,
+                expandedHeight: 450.0,
+                pinned: true,
+                collapsedHeight: 80.0,
+                actions: [
+                  IconButton(
+                    icon: Icon(
+                      vm.areAmountsVisible ? Icons.visibility : Icons.visibility_off,
+                      color: AppColors.textOnPrimary,
                     ),
-                  ],
-                  flexibleSpace: FlexibleSpaceBar(
-                    titlePadding: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 30,
-                            child: TextField(
-                              onChanged: (value) => vm.search(value),
-                              style: const TextStyle(color: AppColors.textOnPrimary, fontSize: 12),
-                              decoration: InputDecoration(
-                                hintText: 'ຄົ້ນຫາ...',
-                                hintStyle: TextStyle(color: AppColors.textOnPrimary.withOpacity(0.5)),
-                                prefixIcon: Icon(Icons.search, size: 15, color: AppColors.textOnPrimary.withOpacity(0.7)),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.15),
-                                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(20),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                            ),
+                    onPressed: vm.toggleAmountVisibility,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined, color: AppColors.textOnPrimary),
+                    onPressed: () => showSettingsDialog(context, vm),
+                  ),
+                ],
+                // Title for collapsed state: จะแสดงผลก็ต่อเมื่อ _isAppBarCollapsed เป็น true
+                title: AnimatedOpacity(
+                  opacity: _isAppBarCollapsed ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 300),
+                  child: _buildCollapsedHeader(vm),
+                ),
+                centerTitle: false,
+                titleSpacing: 0,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Container(
+                    decoration: vm.settings.useDefaultBackground
+                        ? const BoxDecoration(gradient: headerGradient)
+                        : BoxDecoration(
+                            image: vm.settings.backgroundImagePath != null && vm.settings.backgroundImagePath!.isNotEmpty
+                                ? DecorationImage(
+                                    image: FileImage(File(vm.settings.backgroundImagePath!)),
+                                    fit: BoxFit.cover,
+                                    colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.3), BlendMode.darken),
+                                  )
+                                : null,
+                            gradient: headerGradient,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildYearDropdownFilter(vm),
-                      ],
-                    ),
-                    background: Container(
-                      decoration: const BoxDecoration(gradient: headerGradient),
-                      child: SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 60),
-                          child: _buildGrandTotalDisplay(vm),
-                        ),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                        child: _buildExpandedHeader(vm),
                       ),
                     ),
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: Container(
-                    constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - 80),
-                    clipBehavior: Clip.antiAlias,
-                    decoration: const BoxDecoration(
-                      color: AppColors.background,
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(24),
-                        topRight: Radius.circular(24),
-                      ),
+              ),
+              SliverToBoxAdapter(
+                child: Container(
+                  constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - 80),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: const BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
                     ),
-                    child: vm.items.isEmpty
-                        ? _buildEmptyState()
-                        : _buildItemsList(context, vm),
                   ),
+                  child: vm.isLoading
+                      ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
+                      : vm.items.isEmpty
+                          ? _buildEmptyState()
+                          : _buildItemsList(context, vm),
                 ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCollapsedHeader(HomeViewModel vm) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (vm.settings.logoImagePath != null && vm.settings.logoImagePath!.isNotEmpty)
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.transparent,
+              backgroundImage: FileImage(File(vm.settings.logoImagePath!)),
+            ),
+          if (vm.settings.logoImagePath != null && vm.settings.logoImagePath!.isNotEmpty)
+            const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (vm.settings.isMainTitleVisible)
+                  Text(
+                    vm.settings.mainTitle,
+                    style: AppTextStyles.heading.copyWith(color: Colors.white, fontSize: 16),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                if (vm.settings.isSubTitleVisible)
+                  Text(
+                    vm.settings.subTitle,
+                    style: AppTextStyles.body.copyWith(color: Colors.white.withOpacity(0.8), fontSize: 10),
+                    overflow: TextOverflow.ellipsis,
+                  ),
               ],
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildGrandTotalDisplay(HomeViewModel vm) {
+  Widget _buildExpandedHeader(HomeViewModel vm) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          'ງົບປະມານທັງໝົດ',
-          style: AppTextStyles.subheading.copyWith(fontSize: 14, color: Colors.white.withOpacity(0.8))
+        // Top part: Logo and financial info
+        _buildHeaderContent(vm),
+        const SizedBox(height: 5,),
+        // Bottom part: Search and filter
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 30,
+                child: TextField(
+                  onChanged: vm.search,
+                  style: const TextStyle(color: AppColors.textOnPrimary, fontSize: 12),
+                  decoration: InputDecoration(
+                    hintText: 'ຄົ້ນຫາ...',
+                    hintStyle: TextStyle(color: AppColors.textOnPrimary.withOpacity(0.5)),
+                    prefixIcon: Icon(Icons.search, size: 15, color: AppColors.textOnPrimary.withOpacity(0.7)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.15),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildYearDropdownFilter(vm),
+          ],
         ),
-        _buildBudgetRow(Currency.KIP, vm.grandTotalBudget[Currency.KIP.code] ?? 0.0, vm.areAmountsVisible),
-        _buildBudgetRow(Currency.THB, vm.grandTotalBudget[Currency.THB.code] ?? 0.0, vm.areAmountsVisible),
-        _buildBudgetRow(Currency.USD, vm.grandTotalBudget[Currency.USD.code] ?? 0.0, vm.areAmountsVisible),
+      ],
+    );
+  }
+
+  Widget _buildHeaderContent(HomeViewModel vm) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // --- Top Row: Logo and Titles ---
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (vm.settings.logoImagePath != null && vm.settings.logoImagePath!.isNotEmpty)
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: Colors.transparent,
+                backgroundImage: FileImage(File(vm.settings.logoImagePath!)),
+              ),
+            if (vm.settings.logoImagePath != null && vm.settings.logoImagePath!.isNotEmpty)
+              const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (vm.settings.isMainTitleVisible)
+                    Text(
+                      vm.settings.mainTitle,
+                      style: AppTextStyles.heading.copyWith(color: Colors.white, fontSize: 18),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  if (vm.settings.isSubTitleVisible)
+                    Text(
+                      vm.settings.subTitle,
+                      style: AppTextStyles.body.copyWith(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // --- Middle Row: Total Budget ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'ລວມມູນຄ່າທັງໝົດ',
+                  style: AppTextStyles.subheading.copyWith(fontSize: 14, color: Colors.white.withOpacity(1)),
+                ),
+                _buildBudgetRow(Currency.KIP, vm.grandTotalBudget[Currency.KIP.code] ?? 0.0, vm.areAmountsVisible),
+                _buildBudgetRow(Currency.THB, vm.grandTotalBudget[Currency.THB.code] ?? 0.0, vm.areAmountsVisible),
+                _buildBudgetRow(Currency.USD, vm.grandTotalBudget[Currency.USD.code] ?? 0.0, vm.areAmountsVisible),
+              ],
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
-        Text(
-          'ຍອດຄົງເຫຼືອລວມ',
-          style: AppTextStyles.subheading.copyWith(fontSize: 14, color: Colors.white.withOpacity(0.8))
-        ),
-        _buildFinancialDetailRow(
-          vm: vm,
-          currency: Currency.KIP,
-          budget: vm.grandTotalBudget[Currency.KIP.code] ?? 0.0,
-          cost: vm.grandTotalCost[Currency.KIP.code] ?? 0.0,
-          remaining: vm.grandTotalRemaining[Currency.KIP.code] ?? 0.0,
-        ),
-        _buildFinancialDetailRow(
-          vm: vm,
-          currency: Currency.THB,
-          budget: vm.grandTotalBudget[Currency.THB.code] ?? 0.0,
-          cost: vm.grandTotalCost[Currency.THB.code] ?? 0.0,
-          remaining: vm.grandTotalRemaining[Currency.THB.code] ?? 0.0,
-        ),
-        _buildFinancialDetailRow(
-          vm: vm,
-          currency: Currency.USD,
-          budget: vm.grandTotalBudget[Currency.USD.code] ?? 0.0,
-          cost: vm.grandTotalCost[Currency.USD.code] ?? 0.0,
-          remaining: vm.grandTotalRemaining[Currency.USD.code] ?? 0.0,
+        // --- Bottom Row: Remaining Balance ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            Expanded( // Wrap with Expanded to prevent overflow
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ຍອດຄົງເຫຼືອລວມ',
+                    style: AppTextStyles.subheading.copyWith(fontSize: 14, color: Colors.white.withOpacity(0.8)),
+                  ),
+                  _buildFinancialDetailRow(
+                    vm: vm,
+                    currency: Currency.KIP,
+                    budget: vm.grandTotalBudget[Currency.KIP.code] ?? 0.0,
+                    cost: vm.grandTotalCost[Currency.KIP.code] ?? 0.0,
+                    remaining: vm.grandTotalRemaining[Currency.KIP.code] ?? 0.0,
+                  ),
+                  _buildFinancialDetailRow(
+                    vm: vm,
+                    currency: Currency.THB,
+                    budget: vm.grandTotalBudget[Currency.THB.code] ?? 0.0,
+                    cost: vm.grandTotalCost[Currency.THB.code] ?? 0.0,
+                    remaining: vm.grandTotalRemaining[Currency.THB.code] ?? 0.0,
+                  ),
+                  _buildFinancialDetailRow(
+                    vm: vm,
+                    currency: Currency.USD,
+                    budget: vm.grandTotalBudget[Currency.USD.code] ?? 0.0,
+                    cost: vm.grandTotalCost[Currency.USD.code] ?? 0.0,
+                    remaining: vm.grandTotalRemaining[Currency.USD.code] ?? 0.0,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
   Widget _buildYearDropdownFilter(HomeViewModel vm) {
+    final isValueValid = vm.availableYears.contains(vm.selectedYearFilter);
     return Container(
       height: 30,
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -161,7 +328,7 @@ class HomeContent extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<int?>(
-          value: vm.selectedYearFilter,
+          value: isValueValid ? vm.selectedYearFilter : null,
           onChanged: (year) {
             vm.filterByYear(year);
           },
@@ -187,19 +354,14 @@ class HomeContent extends StatelessWidget {
 
   Widget _buildBudgetRow(Currency currency, double amount, bool isVisible) {
     if (amount == 0) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text(
-          isVisible
-              ? '${NumberFormat("#,##0.##").format(amount)} ${currency.symbol}'
-              : '*********** ${currency.symbol}',
-          style: AppTextStyles.subheading.copyWith(
-            fontSize: 16,
-            color: Colors.white.withOpacity(0.8),
-          ),
-        ),
-      ],
+    return Text(
+      isVisible
+          ? '${NumberFormat("#,##0.##").format(amount)} ${currency.symbol}'
+          : '*********** ${currency.symbol}',
+      style: AppTextStyles.subheading.copyWith(
+        fontSize: 16,
+        color: Colors.white.withOpacity(0.8),
+      ),
     );
   }
 
@@ -285,7 +447,7 @@ class HomeContent extends StatelessWidget {
           ];
         }).toList(),
       );
-    } 
+    }
     else {
       return ListView.builder(
         shrinkWrap: true,
@@ -341,7 +503,6 @@ class HomeContent extends StatelessWidget {
                   ),
                 ],
               ),
-              /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
               if (item.selectedDate != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
@@ -356,7 +517,6 @@ class HomeContent extends StatelessWidget {
                   ),
                 ),
               SizedBox(height: item.selectedDate != null ? 6 : 10),
-              /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
               Text(item.description, style: AppTextStyles.body, maxLines: 2, overflow: TextOverflow.ellipsis),
               const Divider(height: 20),
               _buildCardFinancials(item, projectCosts, vm.areAmountsVisible),
@@ -420,11 +580,11 @@ class HomeContent extends StatelessWidget {
           : '*********** ${currency.symbol}',
       style: AppTextStyles.body.copyWith(
           color: AppColors.textSecondary,
-          fontSize: 13 
+          fontSize: 13
       ),
     );
   }
-  
+ 
   Widget _buildCardFinancialDetailRow({
     required Currency currency,
     required double budget,
@@ -446,8 +606,8 @@ class HomeContent extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           AnimatedProgressBar(
-            value: cost, 
-            total: budget, 
+            value: cost,
+            total: budget,
             currency: currency
           ),
         ],
@@ -589,6 +749,19 @@ class _AnimatedProgressBarState extends State<AnimatedProgressBar> with SingleTi
   Widget build(BuildContext context) {
     final percentage = (widget.total > 0) ? (widget.value / widget.total) : (widget.value > 0 ? 1.0 : 0.0);
     
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // จุดนี้คือจุดที่เพิ่ม Logic การเปลี่ยนสีของ Progress Bar
+    // ตามเงื่อนไขที่คุณต้องการ (เขียว, เหลือง, แดง)
+    Color progressBarColor;
+    if (percentage > 1.0) {
+      progressBarColor = Colors.red.shade400; // มากกว่า 100%
+    } else if (percentage >= 0.8) {
+      progressBarColor = Colors.yellow.shade700; // มากกว่าหรือเท่ากับ 80%
+    } else {
+      progressBarColor = Colors.green.shade400; // น้อยกว่า 80%
+    }
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+
     return RotationTransition(
       turns: _animation,
       child: LayoutBuilder(
@@ -610,7 +783,10 @@ class _AnimatedProgressBarState extends State<AnimatedProgressBar> with SingleTi
                 Container(
                   width: filledWidth,
                   decoration: BoxDecoration(
-                    color: Colors.red.shade400,
+                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                    // นำสีที่คำนวณไว้ด้านบนมาใช้งานกับ Progress Bar
+                    color: progressBarColor,
+                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),

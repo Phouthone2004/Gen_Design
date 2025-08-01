@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +20,9 @@ ItemModel _processItemData(Map<String, Object?> itemMap) {
   return ItemModel.fromMap(itemMap);
 }
 
+// enum สำหรับจัดการตัวเลือกวันที่ในหน้านี้
+enum DateSelectionOption { none, today, manual }
+
 class DetailPage extends StatefulWidget {
   final int itemId;
   const DetailPage({super.key, required this.itemId});
@@ -33,7 +37,9 @@ class _DetailPageState extends State<DetailPage> {
   late PageController _pageController;
   bool _isScrolled = false;
 
-  List<SubItemModel> _subItems = [];
+  List<SubItemModel> _subItemsTree = [];
+  Map<int?, List<SubItemModel>> _hierarchy = {};
+  Map<int, Map<String, dynamic>> _calculatedTotals = {};
   bool _isSubItemsLoading = true;
 
   List<QuarterlyBudgetModel> _quarterlyBudgets = [];
@@ -69,7 +75,7 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _loadAllData() async {
     final item = await (_itemDetailFuture = _loadItemDetails());
-    await _loadSubItems();
+    await _loadAndStructureSubItems();
     await _loadQuarterlyBudgets(item);
   }
 
@@ -106,24 +112,127 @@ class _DetailPageState extends State<DetailPage> {
     return await compute(_processItemData, itemMap);
   }
 
-  Future<void> _loadSubItems() async {
-    setState(() {
-      _isSubItemsLoading = true;
-    });
+  Future<void> _loadAndStructureSubItems() async {
+    setState(() => _isSubItemsLoading = true);
     try {
-      final subItems = await DBService.instance.readSubItemsForParent(
+      final allSubItems = await DBService.instance.readSubItemsForParent(
         widget.itemId,
       );
-      subItems.sort((a, b) => a.id!.compareTo(b.id!));
+
+      final hierarchy = <int?, List<SubItemModel>>{};
+      for (final subItem in allSubItems) {
+        hierarchy.putIfAbsent(subItem.childOf, () => []).add(subItem);
+      }
+      _hierarchy = hierarchy;
+
+      final calculatedTotals = <int, Map<String, dynamic>>{};
+      final topLevelItems = hierarchy[null] ?? [];
+      for (final item in topLevelItems) {
+        _calculateRecursiveTotals(item, hierarchy, calculatedTotals);
+      }
+      _calculatedTotals = calculatedTotals;
+
       setState(() {
-        _subItems = subItems;
+        _subItemsTree = topLevelItems;
       });
     } catch (e) {
-      print('Error loading sub-items: $e');
+      print('Error loading and structuring sub-items: $e');
     } finally {
-      setState(() {
-        _isSubItemsLoading = false;
+      setState(() => _isSubItemsLoading = false);
+    }
+  }
+
+  Map<String, dynamic> _calculateRecursiveTotals(
+    SubItemModel item,
+    Map<int?, List<SubItemModel>> hierarchy,
+    Map<int, Map<String, dynamic>> calculatedTotals,
+  ) {
+    if (calculatedTotals.containsKey(item.id)) {
+      return calculatedTotals[item.id]!;
+    }
+
+    double totalQuantity = item.quantity ?? 0;
+    final totalCosts = {for (var c in Currency.values) c.code: 0.0};
+
+    if (item.laborCost != null &&
+        item.laborCost! > 0 &&
+        item.laborCostCurrency != null) {
+      totalCosts[item.laborCostCurrency!] =
+          (totalCosts[item.laborCostCurrency!] ?? 0) + item.laborCost!;
+    }
+    if (item.materialCost != null &&
+        item.materialCost! > 0 &&
+        item.materialCostCurrency != null) {
+      totalCosts[item.materialCostCurrency!] =
+          (totalCosts[item.materialCostCurrency!] ?? 0) + item.materialCost!;
+    }
+
+    final children = hierarchy[item.id] ?? [];
+    for (final child in children) {
+      final childTotals = _calculateRecursiveTotals(
+        child,
+        hierarchy,
+        calculatedTotals,
+      );
+      totalQuantity += childTotals['quantity'] as double;
+      (childTotals['costs'] as Map<String, double>).forEach((currency, cost) {
+        totalCosts[currency] = (totalCosts[currency] ?? 0) + cost;
       });
+    }
+
+    final result = {'quantity': totalQuantity, 'costs': totalCosts};
+    calculatedTotals[item.id!] = result;
+    return result;
+  }
+
+  Future<void> _updateSubItemOrder(int? childOf) async {
+    final allSubItems = await DBService.instance.readSubItemsForParent(
+      widget.itemId,
+    );
+    final siblings = allSubItems
+        .where((item) => item.childOf == childOf)
+        .toList();
+    siblings.sort((a, b) => a.id!.compareTo(b.id!));
+
+    final List<SubItemModel> itemsToUpdate = [];
+    final item = await _itemDetailFuture;
+    final parentPrefix =
+        _hierarchy[childOf]?.first.title.split('.').first ??
+        item.title.split('. ').first;
+
+    for (int i = 0; i < siblings.length; i++) {
+      final subItem = siblings[i];
+      final newIndex = i + 1;
+
+      String currentPrefix;
+      String currentDescription;
+
+      int firstSpaceIndex = subItem.title.indexOf(' ');
+      if (firstSpaceIndex != -1) {
+        currentPrefix = subItem.title.substring(0, firstSpaceIndex);
+        currentDescription = subItem.title.substring(firstSpaceIndex + 1);
+      } else {
+        currentPrefix = subItem.title;
+        currentDescription = '';
+      }
+
+      String newPrefix;
+      if (childOf == null) {
+        newPrefix = '${parentPrefix}.$newIndex';
+      } else {
+        final parent = allSubItems.firstWhere((it) => it.id == childOf);
+        final parentTitlePrefix = parent.title.split(' ').first;
+        newPrefix = '$parentTitlePrefix.$newIndex';
+      }
+
+      if (currentPrefix != newPrefix) {
+        final newTitle = '$newPrefix $currentDescription'.trim();
+        itemsToUpdate.add(subItem.copyWith(title: newTitle));
+      }
+    }
+
+    if (itemsToUpdate.isNotEmpty) {
+      await DBService.instance.updateSubItems(itemsToUpdate);
     }
   }
 
@@ -181,17 +290,36 @@ class _DetailPageState extends State<DetailPage> {
         final projectCosts = vm.subItemsTotalCosts[item.id] ?? {};
 
         return Container(
-          decoration: const BoxDecoration(gradient: headerGradient),
+          decoration: vm.settings.useDefaultBackground
+              ? const BoxDecoration(gradient: headerGradient)
+              : BoxDecoration(
+                  image:
+                      vm.settings.backgroundImagePath != null &&
+                          vm.settings.backgroundImagePath!.isNotEmpty
+                      ? DecorationImage(
+                          image: FileImage(
+                            File(vm.settings.backgroundImagePath!),
+                          ),
+                          fit: BoxFit.cover,
+                          colorFilter: ColorFilter.mode(
+                            Colors.black.withOpacity(0.3),
+                            BlendMode.darken,
+                          ),
+                        )
+                      : null,
+                  gradient: headerGradient, // ใช้ Gradient เป็น Fallback
+                ),
           child: Scaffold(
             backgroundColor: Colors.transparent,
             floatingActionButton: FloatingActionButton(
               onPressed: () async {
                 final bool? result = await _showAddEditSubItemDialog(
                   context,
-                  item.id!,
+                  item: item,
+                  childOf: null,
                 );
                 if (result == true) {
-                  await _loadSubItems();
+                  await _loadAndStructureSubItems();
                   Provider.of<HomeViewModel>(
                     context,
                     listen: false,
@@ -251,6 +379,7 @@ class _DetailPageState extends State<DetailPage> {
                         vm.toggleAmountVisibility();
                       },
                     ),
+                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
                     IconButton(
                       icon: Icon(
                         Icons.picture_as_pdf_outlined,
@@ -259,9 +388,16 @@ class _DetailPageState extends State<DetailPage> {
                             : AppColors.textOnPrimary,
                       ),
                       onPressed: () async {
-                        // PDF export logic
+                        // เพิ่มการเรียกใช้ PDF Exporter
+                        await PdfExporter.generateAndPrintPdf(
+                          item,
+                          _subItemsTree,
+                          _hierarchy,
+                          _calculatedTotals,
+                        );
                       },
                     ),
+                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                   ],
                   title: _isScrolled
                       ? Text(
@@ -343,20 +479,9 @@ class _DetailPageState extends State<DetailPage> {
                       padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
                       child: _isSubItemsLoading
                           ? const Center(child: CircularProgressIndicator())
-                          : _subItems.isEmpty
+                          : _subItemsTree.isEmpty
                           ? _buildEmptySubItems()
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _subItems.length,
-                              itemBuilder: (context, index) {
-                                final subItem = _subItems[index];
-                                return SubItemCard(
-                                  subItem: subItem,
-                                  mainItem: item,
-                                );
-                              },
-                            ),
+                          : _buildSubItemTree(_subItemsTree, 0, item),
                     ),
                   ),
                 ),
@@ -368,114 +493,145 @@ class _DetailPageState extends State<DetailPage> {
     );
   }
 
-Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
-  double totalKip = _quarterlyBudgets.fold(
-    0.0,
-    (sum, q) => sum + q.amountKip,
-  );
-  double totalThb = _quarterlyBudgets.fold(
-    0.0,
-    (sum, q) => sum + q.amountThb,
-  );
-  double totalUsd = _quarterlyBudgets.fold(
-    0.0,
-    (sum, q) => sum + q.amountUsd,
-  );
-
-  // --- CHANGE 1: คำนวณจำนวนหน้าทั้งหมด (ไตรมาส + ปุ่มเพิ่ม 1) ---
-  final int pageCount = _quarterlyBudgets.length + 1;
-
-  return Row(
-    // crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      // Total Budget Display (ส่วนนี้ไม่ต้องแก้ไข)
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            'ງົບໄຕມາດທັງໝົດ',
-            style: AppTextStyles.subheading.copyWith(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.8),
-            ),
-          ),
-          _buildAmountText(Currency.KIP, totalKip, isVisible),
-          _buildAmountText(Currency.THB, totalThb, isVisible),
-          _buildAmountText(Currency.USD, totalUsd, isVisible),
-        ],
-      ),
-      const SizedBox(width: 16),
-      // Scrollable Quarterly Cards
-      Expanded(
-        child: Column(
+  Widget _buildSubItemTree(
+    List<SubItemModel> subItems,
+    double indentationLevel,
+    ItemModel mainItem,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: subItems.map((subItem) {
+        final children = _hierarchy[subItem.id] ?? [];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: 120,
-              child: _isBudgetsLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : PageView.builder(
-                      controller: _pageController,
-                      onPageChanged: (index) {
-                        setState(() {
-                          _currentPageIndex = index;
-                        });
-                      },
-                      // --- CHANGE 2: ใช้ pageCount ที่คำนวณไว้ ---
-                      itemCount: pageCount,
-                      itemBuilder: (context, index) {
-                        // --- CHANGE 3: เช็คว่าเป็นหน้าสุดท้ายหรือไม่ ---
-                        // ถ้าเป็นหน้าสุดท้าย (index เท่ากับจำนวนไตรมาส) ให้แสดงปุ่มเพิ่ม
-                        if (index == _quarterlyBudgets.length) {
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                              child: _buildAddQuarterButton(item),
-                            ),
-                          );
-                        }
-                        // ถ้าไม่ใช่หน้าสุดท้าย ให้แสดงการ์ดไตรมาสตามปกติ
-                        final budget = _quarterlyBudgets[index];
-                        return _buildQuarterCard(item, budget, isVisible);
-                      },
-                    ),
-            ),
-            // --- CHANGE 4: อัปเดตตัว Indicators ให้ใช้ pageCount ---
-            if (pageCount > 1) // แสดง Indicators ถ้ามีมากกว่า 1 หน้า
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(pageCount, (index) { // ใช้ pageCount
-                    return Container(
-                      width: 8.0,
-                      height: 8.0,
-                      margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _currentPageIndex == index
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.4),
-                      ),
-                    );
-                  }),
-                ),
+            Padding(
+              padding: EdgeInsets.only(left: indentationLevel),
+              child: SubItemCard(
+                subItem: subItem,
+                mainItem: mainItem,
+                calculatedTotals:
+                    _calculatedTotals[subItem.id] ??
+                    {'quantity': 0.0, 'costs': {}},
+                onAddChild: () async {
+                  final bool? result = await _showAddEditSubItemDialog(
+                    context,
+                    item: mainItem,
+                    childOf: subItem.id,
+                    parentTitlePrefix: subItem.title.split(' ').first,
+                  );
+                  if (result == true) {
+                    await _loadAndStructureSubItems();
+                    Provider.of<HomeViewModel>(
+                      context,
+                      listen: false,
+                    ).loadItems();
+                  }
+                },
               ),
-            // --- CHANGE 5: ลบปุ่มเดิมที่อยู่ข้างล่างออก ---
-            // const SizedBox(height: 12),
-            // Center(child: _buildAddQuarterButton(item)),
+            ),
+            if (children.isNotEmpty)
+              _buildSubItemTree(children, indentationLevel + 20.0, mainItem),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
+    double totalKip = _quarterlyBudgets.fold(
+      0.0,
+      (sum, q) => sum + q.amountKip,
+    );
+    double totalThb = _quarterlyBudgets.fold(
+      0.0,
+      (sum, q) => sum + q.amountThb,
+    );
+    double totalUsd = _quarterlyBudgets.fold(
+      0.0,
+      (sum, q) => sum + q.amountUsd,
+    );
+    final int pageCount = _quarterlyBudgets.length + 1;
+
+    return Row(
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'ລວມມູນຄ່າທັງໝົດ',
+              style: AppTextStyles.subheading.copyWith(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.8),
+              ),
+            ),
+            _buildAmountText(Currency.KIP, totalKip, isVisible),
+            _buildAmountText(Currency.THB, totalThb, isVisible),
+            _buildAmountText(Currency.USD, totalUsd, isVisible),
           ],
         ),
-      ),
-    ],
-  );
-}
-
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            children: [
+              SizedBox(
+                height: 120,
+                child: _isBudgetsLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : PageView.builder(
+                        controller: _pageController,
+                        onPageChanged: (index) =>
+                            setState(() => _currentPageIndex = index),
+                        itemCount: pageCount,
+                        itemBuilder: (context, index) {
+                          if (index == _quarterlyBudgets.length) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4.0,
+                                ),
+                                child: _buildAddQuarterButton(item),
+                              ),
+                            );
+                          }
+                          final budget = _quarterlyBudgets[index];
+                          return _buildQuarterCard(item, budget, isVisible);
+                        },
+                      ),
+              ),
+              if (pageCount > 1)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      pageCount,
+                      (index) => Container(
+                        width: 8.0,
+                        height: 8.0,
+                        margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _currentPageIndex == index
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildQuarterCard(
     ItemModel item,
@@ -491,27 +647,26 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () async {
-          final updatedBudget = await _showAddEditQuarterDialog(
+          final result = await _showAddEditQuarterDialog(
             context,
             item.id!,
             budget.quarterNumber,
             existingBudget: budget,
           );
-          if (updatedBudget != null) {
-            await DBService.instance.updateQuarterlyBudget(updatedBudget);
+          if (result is QuarterlyBudgetModel) {
+            await DBService.instance.updateQuarterlyBudget(result);
             await _loadQuarterlyBudgets(item);
             vm.loadItems();
-          }
-        },
-        onLongPress: () async {
-          final bool? confirmDelete = await _showDeleteQuarterConfirmation(
-            context,
-            budget.quarterNumber,
-          );
-          if (confirmDelete == true) {
-            await DBService.instance.deleteQuarterlyBudget(budget.id!);
-            await _loadQuarterlyBudgets(item);
-            vm.loadItems();
+          } else if (result == 'DELETE') {
+            final bool? confirmDelete = await _showDeleteQuarterConfirmation(
+              context,
+              budget.quarterNumber,
+            );
+            if (confirmDelete == true) {
+              await DBService.instance.deleteQuarterlyBudget(budget.id!);
+              await _loadQuarterlyBudgets(item);
+              vm.loadItems();
+            }
           }
         },
         child: Padding(
@@ -520,24 +675,30 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                'ໄຕມາດ ${budget.quarterNumber}',
-                style: AppTextStyles.subheading.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Text(
+                    'ງວດທີ່ ${budget.quarterNumber}',
+                    style: AppTextStyles.subheading.copyWith(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Spacer(),
+                  if (budget.selectedDate != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      DateFormat('dd/MM/yyyy').format(budget.selectedDate!),
+                      style: AppTextStyles.subText.copyWith(fontSize: 12),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 4),
               _buildAmountText(Currency.KIP, budget.amountKip, isVisible),
               _buildAmountText(Currency.THB, budget.amountThb, isVisible),
               _buildAmountText(Currency.USD, budget.amountUsd, isVisible),
-              if (budget.selectedDate != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  DateFormat('dd/MM/yyyy').format(budget.selectedDate!),
-                  style: AppTextStyles.subText.copyWith(fontSize: 10),
-                ),
-              ],
+              
             ],
           ),
         ),
@@ -555,7 +716,7 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
           item.id!,
           newQuarterNumber,
         );
-        if (newBudget != null) {
+        if (newBudget is QuarterlyBudgetModel) {
           await DBService.instance.createQuarterlyBudget(newBudget);
           await _loadQuarterlyBudgets(item);
           vm.loadItems();
@@ -569,7 +730,11 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
           color: AppColors.primaryLight.withOpacity(0.5),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.add_circle_outline, color: Colors.white, size: 40),
+        child: const Icon(
+          Icons.add_circle_outline,
+          color: Colors.white,
+          size: 40,
+        ),
       ),
     );
   }
@@ -580,7 +745,7 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
       isVisible
           ? '${NumberFormat("#,##0.##").format(amount)} ${currency.symbol}'
           : '*********** ${currency.symbol}',
-      style: AppTextStyles.subText
+      style: AppTextStyles.subText,
     );
   }
 
@@ -701,7 +866,9 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('ຢືນຢັນການລົບ'),
-          content: Text('ທ່ານຕ້ອງການລົບລາຍການ "${subItem.title}" ແມ່ນບໍ່?'),
+          content: Text(
+            'ທ່ານຕ້ອງການລົບລາຍການ "${subItem.title}" ແລະລາຍການຍ່ອຍທັງໝົດຂອງມັນແມ່ນບໍ່?',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
@@ -710,9 +877,11 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
               onPressed: () async {
-                await DBService.instance.deleteSubItem(subItem.id!);
+                final parentId = subItem.childOf;
+                await _deleteSubItemAndChildren(subItem.id!);
+                await _updateSubItemOrder(parentId);
                 Navigator.of(dialogContext).pop();
-                _loadSubItems();
+                _loadAndStructureSubItems();
                 Provider.of<HomeViewModel>(context, listen: false).loadItems();
               },
               child: const Text('ລົບ'),
@@ -723,15 +892,46 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
     );
   }
 
-  Future<bool?> _showAddEditSubItemDialog(
-    BuildContext context,
-    int parentId, {
+  Future<void> _deleteSubItemAndChildren(int subItemId) async {
+    final children = _hierarchy[subItemId] ?? [];
+    for (final child in children) {
+      await _deleteSubItemAndChildren(child.id!);
+    }
+    await DBService.instance.deleteSubItem(subItemId);
+  }
+
+  Future<dynamic> _showAddEditSubItemDialog(
+    BuildContext context, {
+    required ItemModel item,
     SubItemModel? existingSubItem,
+    int? childOf,
+    String? parentTitlePrefix,
   }) {
     final bool isEditing = existingSubItem != null;
     final formKey = GlobalKey<FormState>();
 
-    final titleController = TextEditingController(text: existingSubItem?.title);
+    String titlePrefix = '';
+    String descriptiveTitle = '';
+
+    if (isEditing) {
+      int firstSpaceIndex = existingSubItem!.title.indexOf(' ');
+      if (firstSpaceIndex != -1) {
+        titlePrefix = existingSubItem.title.substring(0, firstSpaceIndex);
+        descriptiveTitle = existingSubItem.title.substring(firstSpaceIndex + 1);
+      } else {
+        titlePrefix = existingSubItem.title;
+        descriptiveTitle = '';
+      }
+    } else {
+      final siblings = _hierarchy[childOf] ?? [];
+      siblings.sort((a, b) => a.id!.compareTo(b.id!));
+      final newIndex = siblings.length + 1;
+      final prefix = parentTitlePrefix ?? item.title.split('. ').first;
+      titlePrefix = '$prefix.$newIndex';
+    }
+
+    final titleController = TextEditingController(text: descriptiveTitle);
+
     final descriptionController = TextEditingController(
       text: existingSubItem?.description,
     );
@@ -751,11 +951,18 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
 
     String? selectedUnit = existingSubItem?.unit;
     DateTime? selectedDate = existingSubItem?.selectedDate;
-    bool showCalendar = existingSubItem?.selectedDate != null;
+
+    // ประกาศ state variable สำหรับสกุลเงิน
     String selectedLaborCurrency =
         existingSubItem?.laborCostCurrency ?? Currency.KIP.code;
     String selectedMaterialCurrency =
         existingSubItem?.materialCostCurrency ?? Currency.KIP.code;
+
+    // กำหนดค่าเริ่มต้นของตัวเลือกวันที่
+    DateSelectionOption dateSelectionOption = DateSelectionOption.none;
+    if (selectedDate != null) {
+      dateSelectionOption = DateSelectionOption.manual;
+    }
 
     final List<String> units = [
       'm',
@@ -776,18 +983,28 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: Text(isEditing ? 'ແກ້ໄຂລາຍການຍ່ອຍ' : 'ເພິ້ມລາຍການຍ່ອຍ'),
+              title: Text(
+                isEditing ? 'ແກ້ໄຂ: $titlePrefix' : 'ເພີ່ມລາຍການຍ່ອຍ',
+              ),
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (!isEditing)
+                        Text(
+                          "ຫົວຂໍ້: $titlePrefix",
+                          style: AppTextStyles.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                       TextFormField(
                         controller: titleController,
                         decoration: const InputDecoration(labelText: 'ຫົວຂໍ້'),
                         validator: (v) =>
-                            v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້' : null,
+                            v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້ກ່ອນ' : null,
                       ),
                       TextFormField(
                         controller: descriptionController,
@@ -828,11 +1045,8 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (newValue) {
-                                setStateDialog(() {
-                                  selectedUnit = newValue;
-                                });
-                              },
+                              onChanged: (newValue) =>
+                                  setStateDialog(() => selectedUnit = newValue),
                             ),
                           ),
                         ],
@@ -868,9 +1082,11 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (v) => setStateDialog(
-                                () => selectedLaborCurrency = v!,
-                              ),
+                              onChanged: (v) {
+                                setStateDialog(() {
+                                  selectedLaborCurrency = v!;
+                                });
+                              },
                             ),
                           ),
                         ],
@@ -905,50 +1121,115 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (v) => setStateDialog(
-                                () => selectedMaterialCurrency = v!,
-                              ),
+                              onChanged: (v) {
+                                setStateDialog(() {
+                                  selectedMaterialCurrency = v!;
+                                });
+                              },
                             ),
                           ),
                         ],
                       ),
                       const Divider(height: 24),
-                      CheckboxListTile(
-                        title: const Text("ສະແດງວັນທີ"),
-                        value: showCalendar,
-                        onChanged: (bool? value) async {
-                          if (value == true) {
-                            final DateTime? picked = await showDatePicker(
-                              context: context,
-                              locale: const Locale('lo'),
-                              initialDate: selectedDate ?? DateTime.now(),
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2101),
-                            );
-                            if (picked != null) {
+
+                      // UI ใหม่สำหรับเลือกวันที่ (พร้อมคำแปลภาษาลาว)
+                      const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
+                      Column(
+                        children: [
+                          RadioListTile<DateSelectionOption>(
+                            title: const Text('ບໍ່ລະບຸວັນທີ'),
+                            value: DateSelectionOption.none,
+                            groupValue: dateSelectionOption,
+                            onChanged: (value) {
                               setStateDialog(() {
-                                showCalendar = true;
-                                selectedDate = picked;
+                                dateSelectionOption = value!;
+                                selectedDate = null;
                               });
-                            }
-                          } else {
-                            setStateDialog(() {
-                              showCalendar = false;
-                              selectedDate = null;
-                            });
-                          }
-                        },
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                        subtitle: showCalendar && selectedDate != null
-                            ? Text(
-                                DateFormat(
-                                  'dd MMMM yyyy',
-                                  'lo',
-                                ).format(selectedDate!),
-                              )
-                            : null,
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          RadioListTile<DateSelectionOption>(
+                            title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
+                            value: DateSelectionOption.today,
+                            groupValue: dateSelectionOption,
+                            onChanged: (value) {
+                              setStateDialog(() {
+                                dateSelectionOption = value!;
+                                selectedDate = DateTime.now();
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          RadioListTile<DateSelectionOption>(
+                            title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
+                            value: DateSelectionOption.manual,
+                            groupValue: dateSelectionOption,
+                            onChanged: (value) {
+                              setStateDialog(() {
+                                dateSelectionOption = value!;
+                                if (existingSubItem?.selectedDate == null) {
+                                  selectedDate = null;
+                                }
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ],
                       ),
+                      if (dateSelectionOption == DateSelectionOption.today &&
+                          selectedDate != null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: 16.0,
+                            bottom: 8.0,
+                          ),
+                          child: Text(
+                            'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                            style: AppTextStyles.body.copyWith(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      if (dateSelectionOption == DateSelectionOption.manual)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: 16.0,
+                            bottom: 8.0,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.calendar_today),
+                                label: const Text('ເລືອກວັນທີ'),
+                                onPressed: () async {
+                                  final DateTime? picked = await showDatePicker(
+                                    context: context,
+                                    locale: const Locale('lo'),
+                                    initialDate: selectedDate ?? DateTime.now(),
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2101),
+                                  );
+                                  if (picked != null &&
+                                      picked != selectedDate) {
+                                    setStateDialog(() {
+                                      selectedDate = picked;
+                                    });
+                                  }
+                                },
+                              ),
+                              if (selectedDate != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                                  style: AppTextStyles.body.copyWith(
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -971,12 +1252,15 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
                             materialCostController.text.replaceAll(',', ''),
                           ) ??
                           0.0;
+                      final finalTitle = '$titlePrefix ${titleController.text}'
+                          .trim();
 
                       if (isEditing) {
                         final updatedItem = SubItemModel(
                           id: existingSubItem!.id,
                           parentId: existingSubItem.parentId,
-                          title: titleController.text,
+                          childOf: existingSubItem.childOf,
+                          title: finalTitle,
                           description: descriptionController.text.isNotEmpty
                               ? descriptionController.text
                               : null,
@@ -995,8 +1279,9 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
                         await DBService.instance.updateSubItem(updatedItem);
                       } else {
                         final newSubItem = SubItemModel(
-                          parentId: parentId,
-                          title: titleController.text,
+                          parentId: item.id!,
+                          childOf: childOf,
+                          title: finalTitle,
                           description: descriptionController.text.isNotEmpty
                               ? descriptionController.text
                               : null,
@@ -1027,7 +1312,7 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
     );
   }
 
-  Future<QuarterlyBudgetModel?> _showAddEditQuarterDialog(
+  Future<dynamic> _showAddEditQuarterDialog(
     BuildContext context,
     int parentId,
     int quarterNumber, {
@@ -1050,11 +1335,10 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
           ? NumberFormat("#,##0").format(existingBudget.amountUsd)
           : '',
     );
-
     DateTime? selectedDate = existingBudget?.selectedDate;
     bool showCalendar = existingBudget?.selectedDate != null;
 
-    return showDialog<QuarterlyBudgetModel>(
+    return showDialog<dynamic>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
@@ -1062,8 +1346,8 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
             return AlertDialog(
               title: Text(
                 isEditing
-                    ? 'ແກ້ໄຂງົບໄຕມາດ $quarterNumber'
-                    : 'ເພີ່ມງົບໄຕມາດ $quarterNumber',
+                    ? 'ແກ້ໄຂງວດທີ່ $quarterNumber'
+                    : 'ເພີ່ມງວດທີ່ $quarterNumber',
               ),
               content: Form(
                 key: formKey,
@@ -1158,6 +1442,15 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
                 ),
               ),
               actions: [
+                if (isEditing)
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop('DELETE'),
+                    child: const Text(
+                      'ລົບ',
+                      style: TextStyle(color: AppColors.danger),
+                    ),
+                  ),
+                const Spacer(),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('ຍົກເລີກ'),
@@ -1208,7 +1501,7 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('ຢືນຢັນການລົບ'),
-          content: Text('ທ່ານຕ້ອງການລົບງົບໄຕມາດ $quarterNumber ແມ່ນບໍ່?'),
+          content: Text('ທ່ານຕ້ອງການລົບງວດທີ່ $quarterNumber ແມ່ນບໍ່?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -1216,9 +1509,7 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('ລົບ'),
             ),
           ],
@@ -1228,11 +1519,19 @@ Widget _buildQuarterlyBudgetSection(ItemModel item, bool isVisible) {
   }
 }
 
-// --- Sub Item Card Widget ---
 class SubItemCard extends StatefulWidget {
   final SubItemModel subItem;
   final ItemModel mainItem;
-  const SubItemCard({super.key, required this.subItem, required this.mainItem});
+  final Map<String, dynamic> calculatedTotals;
+  final VoidCallback onAddChild;
+
+  const SubItemCard({
+    super.key,
+    required this.subItem,
+    required this.mainItem,
+    required this.calculatedTotals,
+    required this.onAddChild,
+  });
 
   @override
   State<SubItemCard> createState() => _SubItemCardState();
@@ -1258,7 +1557,26 @@ class _SubItemCardState extends State<SubItemCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(context),
-              const SizedBox(height: 8),
+              // ย้ายวันที่มาแสดงผลตรงนี้
+              if (widget.subItem.selectedDate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        DateFormat(
+                          'dd/MM/yyyy',
+                        ).format(widget.subItem.selectedDate!),
+                        style: AppTextStyles.body.copyWith(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              SizedBox(height: widget.subItem.selectedDate != null ? 8 : 0),
               _buildFinancials(context),
               const Divider(height: 24),
               _buildShowMoreButton(),
@@ -1290,12 +1608,13 @@ class _SubItemCardState extends State<SubItemCard> {
                     await (context.findAncestorStateOfType<_DetailPageState>())
                         ?._showAddEditSubItemDialog(
                           context,
-                          widget.subItem.parentId,
+                          item: widget.mainItem,
                           existingSubItem: widget.subItem,
+                          childOf: widget.subItem.childOf,
                         );
                 if (result == true) {
                   (context.findAncestorStateOfType<_DetailPageState>())
-                      ?._loadSubItems();
+                      ?._loadAndStructureSubItems();
                   vm.loadItems();
                 }
               } else if (value == 'delete') {
@@ -1315,50 +1634,51 @@ class _SubItemCardState extends State<SubItemCard> {
 
   Widget _buildFinancials(BuildContext context) {
     final vm = Provider.of<HomeViewModel>(context);
-    final laborCost = widget.subItem.laborCost ?? 0.0;
-    final materialCost = widget.subItem.materialCost ?? 0.0;
-
-    final subItemCosts = {for (var c in Currency.values) c.code: 0.0};
-    if (laborCost > 0 && widget.subItem.laborCostCurrency != null) {
-      subItemCosts[widget.subItem.laborCostCurrency!] =
-          (subItemCosts[widget.subItem.laborCostCurrency!] ?? 0) + laborCost;
-    }
-    if (materialCost > 0 && widget.subItem.materialCostCurrency != null) {
-      subItemCosts[widget.subItem.materialCostCurrency!] =
-          (subItemCosts[widget.subItem.materialCostCurrency!] ?? 0) +
-          materialCost;
-    }
+    final Map<String, double> costs = widget.calculatedTotals['costs'] ?? {};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ຄ່າໃຊ້ຈ່າຍ:', style: AppTextStyles.body),
+        Text('ຄ່າໃຊ້ຈ່າຍທັງໝົດ:', style: AppTextStyles.body),
         _buildCardFinancialDetailRow(
           currency: Currency.KIP,
-          budget: widget.mainItem.amount,
-          cost: subItemCosts[Currency.KIP.code] ?? 0.0,
+          cost: costs[Currency.KIP.code] ?? 0.0,
+          totalBudget: _getRelevantBudget(Currency.KIP.code),
           isVisible: vm.areAmountsVisible,
         ),
         _buildCardFinancialDetailRow(
           currency: Currency.THB,
-          budget: widget.mainItem.amountThb,
-          cost: subItemCosts[Currency.THB.code] ?? 0.0,
+          cost: costs[Currency.THB.code] ?? 0.0,
+          totalBudget: _getRelevantBudget(Currency.THB.code),
           isVisible: vm.areAmountsVisible,
         ),
         _buildCardFinancialDetailRow(
           currency: Currency.USD,
-          budget: widget.mainItem.amountUsd,
-          cost: subItemCosts[Currency.USD.code] ?? 0.0,
+          cost: costs[Currency.USD.code] ?? 0.0,
+          totalBudget: _getRelevantBudget(Currency.USD.code),
           isVisible: vm.areAmountsVisible,
         ),
       ],
     );
   }
 
+  double _getRelevantBudget(String currencyCode) {
+    switch (currencyCode) {
+      case 'KIP':
+        return widget.mainItem.amount;
+      case 'THB':
+        return widget.mainItem.amountThb;
+      case 'USD':
+        return widget.mainItem.amountUsd;
+      default:
+        return 0.0;
+    }
+  }
+
   Widget _buildCardFinancialDetailRow({
     required Currency currency,
-    required double budget,
     required double cost,
+    required double totalBudget,
     required bool isVisible,
   }) {
     if (cost == 0) return const SizedBox.shrink();
@@ -1375,7 +1695,11 @@ class _SubItemCardState extends State<SubItemCard> {
             style: AppTextStyles.bodyBold.copyWith(fontSize: 14),
           ),
           const SizedBox(height: 4),
-          AnimatedProgressBar(value: cost, total: budget, currency: currency),
+          AnimatedProgressBar(
+            value: cost,
+            total: totalBudget,
+            currency: currency,
+          ),
         ],
       ),
     );
@@ -1440,37 +1764,33 @@ class _SubItemCardState extends State<SubItemCard> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'ຈຳນວນ:',
+                'ຈຳນວນທັງໝົດ:',
                 style: AppTextStyles.body.copyWith(
                   color: AppColors.textPrimary,
                 ),
               ),
               Text(
-                '${widget.subItem.quantity ?? "-"} ${widget.subItem.unit ?? ""}',
+                '${NumberFormat.decimalPattern().format(widget.calculatedTotals['quantity'] ?? 0)} ${widget.subItem.unit ?? ""}',
                 style: AppTextStyles.bodyBold,
               ),
             ],
           ),
-          if (widget.subItem.selectedDate != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today,
-                  size: 14,
-                  color: AppColors.textSecondary,
+          // ลบวันที่ออกจากส่วนนี้ เพราะย้ายไปแสดงด้านบนแล้ว
+          const SizedBox(height: 16),
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: widget.onAddChild,
+              icon: const Icon(Icons.add),
+              label: const Text('ເພີ່ມລາຍການຍ່ອຍ'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryLight,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  DateFormat(
-                    'dd MMMM yyyy',
-                    'lo',
-                  ).format(widget.subItem.selectedDate!),
-                  style: AppTextStyles.body,
-                ),
-              ],
+              ),
             ),
-          ],
+          ),
         ],
       ),
     );

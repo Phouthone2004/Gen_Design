@@ -5,13 +5,17 @@ import '../data/sub_item_model.dart';
 import '../data/quarterly_budget_model.dart';
 import '../services/db_service.dart';
 import '../presentation/core/app_currencies.dart';
+/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+import '../data/settings_model.dart';
+import '../services/settings_service.dart';
+/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
 class HomeViewModel extends ChangeNotifier {
   List<ItemModel> _allItems = [];
   List<ItemModel> items = [];
   bool isLoading = false;
   String _searchQuery = '';
-  
+ 
   bool areAmountsVisible = true;
 
   Map<String, double> grandTotalBudget = {};
@@ -22,10 +26,35 @@ class HomeViewModel extends ChangeNotifier {
   int? selectedYearFilter;
   List<int> availableYears = [];
 
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  late SettingsModel settings;
+  bool isSettingsLoading = true;
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+
   HomeViewModel() {
     selectedYearFilter = DateTime.now().year;
-    loadItems();
+    _initialize();
   }
+
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  Future<void> _initialize() async {
+    await loadSettings();
+    await loadItems();
+  }
+
+  Future<void> loadSettings() async {
+    isSettingsLoading = true;
+    notifyListeners();
+    settings = await SettingsService.instance.loadSettings();
+    isSettingsLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> saveSettings(SettingsModel newSettings) async {
+    await SettingsService.instance.saveSettings(newSettings);
+    await loadSettings(); // Reload to update the UI
+  }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   void toggleAmountVisibility() {
     areAmountsVisible = !areAmountsVisible;
@@ -38,8 +67,42 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  Map<String, dynamic> _calculateRecursiveTotals(
+    SubItemModel item,
+    Map<int?, List<SubItemModel>> hierarchy,
+    Map<int, Map<String, dynamic>> calculatedTotals,
+  ) {
+    if (calculatedTotals.containsKey(item.id)) {
+      return calculatedTotals[item.id]!;
+    }
+
+    double totalQuantity = item.quantity ?? 0;
+    final totalCosts = { for (var c in Currency.values) c.code : 0.0 };
+
+    if (item.laborCost != null && item.laborCost! > 0 && item.laborCostCurrency != null) {
+      totalCosts[item.laborCostCurrency!] = (totalCosts[item.laborCostCurrency!] ?? 0) + item.laborCost!;
+    }
+    if (item.materialCost != null && item.materialCost! > 0 && item.materialCostCurrency != null) {
+      totalCosts[item.materialCostCurrency!] = (totalCosts[item.materialCostCurrency!] ?? 0) + item.materialCost!;
+    }
+
+    final children = hierarchy[item.id] ?? [];
+    for (final child in children) {
+      final childTotals = _calculateRecursiveTotals(child, hierarchy, calculatedTotals);
+      totalQuantity += childTotals['quantity'] as double;
+      (childTotals['costs'] as Map<String, double>).forEach((currency, cost) {
+        totalCosts[currency] = (totalCosts[currency] ?? 0) + cost;
+      });
+    }
+
+    final result = {'quantity': totalQuantity, 'costs': totalCosts};
+    calculatedTotals[item.id!] = result;
+    return result;
+  }
+
   Future<void> loadItems() async {
     isLoading = true;
+    notifyListeners();
     
     _initializeMaps();
 
@@ -65,7 +128,7 @@ class HomeViewModel extends ChangeNotifier {
         .where((item) => item.creationTimestamp != null)
         .map((item) => DateTime.fromMillisecondsSinceEpoch(item.creationTimestamp!).year)
         .toSet();
-    years.add(DateTime.now().year); 
+    years.add(DateTime.now().year);
     
     availableYears = years.toList();
     availableYears.sort((a, b) => b.compareTo(a));
@@ -76,22 +139,34 @@ class HomeViewModel extends ChangeNotifier {
       grandTotalBudget[Currency.USD.code] = (grandTotalBudget[Currency.USD.code] ?? 0) + item.amountUsd;
     }
 
-    final subItemsGroupedByParent = groupBy(allSubItems, (SubItemModel subItem) => subItem.parentId);
+    final allSubItemsGroupedByParentProject = groupBy(allSubItems, (SubItemModel subItem) => subItem.parentId);
+    final newSubItemsTotalCosts = <int, Map<String, double>>{};
 
-    subItemsGroupedByParent.forEach((parentId, subItems) {
-      final costMap = { for (var c in Currency.values) c.code : 0.0 };
-      for (var subItem in subItems) {
-        if (subItem.laborCost != null && subItem.laborCost! > 0) {
-          final currencyCode = subItem.laborCostCurrency ?? Currency.KIP.code;
-          costMap[currencyCode] = (costMap[currencyCode] ?? 0) + subItem.laborCost!;
+    allSubItemsGroupedByParentProject.forEach((projectId, subItemsForProject) {
+        final hierarchy = <int?, List<SubItemModel>>{};
+        for (final subItem in subItemsForProject) {
+            hierarchy.putIfAbsent(subItem.childOf, () => []).add(subItem);
         }
-        if (subItem.materialCost != null && subItem.materialCost! > 0) {
-          final currencyCode = subItem.materialCostCurrency ?? Currency.KIP.code;
-          costMap[currencyCode] = (costMap[currencyCode] ?? 0) + subItem.materialCost!;
+
+        final calculatedTotals = <int, Map<String, dynamic>>{};
+        final topLevelItems = hierarchy[null] ?? [];
+        for (final item in topLevelItems) {
+            _calculateRecursiveTotals(item, hierarchy, calculatedTotals);
         }
-      }
-      subItemsTotalCosts[parentId] = costMap;
+        
+        final projectTotalCost = { for (var c in Currency.values) c.code : 0.0 };
+        for (final topLevelItem in topLevelItems) {
+            final totals = calculatedTotals[topLevelItem.id];
+            if (totals != null) {
+                (totals['costs'] as Map<String, double>).forEach((currency, cost) {
+                    projectTotalCost[currency] = (projectTotalCost[currency] ?? 0) + cost;
+                });
+            }
+        }
+        newSubItemsTotalCosts[projectId] = projectTotalCost;
     });
+
+    subItemsTotalCosts = newSubItemsTotalCosts;
 
     subItemsTotalCosts.values.forEach((costMap) {
       grandTotalCost.forEach((currencyCode, total) {

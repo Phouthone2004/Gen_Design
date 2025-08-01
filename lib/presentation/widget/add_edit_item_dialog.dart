@@ -4,6 +4,12 @@ import 'package:intl/intl.dart';
 import '../../data/item_model.dart';
 import '../../logic/home_vm.dart';
 import '../core/app_currencies.dart';
+import '../core/app_styles.dart';
+
+/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+// enum สำหรับจัดการตัวเลือกวันที่
+enum DateSelectionOption { none, today, manual }
+/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
 Future<void> showAddItemDialog(
   BuildContext context,
@@ -23,7 +29,7 @@ Future<void> showAddItemDialog(
 
   final titleController = TextEditingController(text: _getOriginalTitle(existingItem?.title));
   final descriptionController = TextEditingController(text: existingItem?.description);
-  
+ 
   final amountKipController = TextEditingController(
     text: existingItem != null && existingItem.amount > 0
         ? NumberFormat("#,##0").format(existingItem.amount)
@@ -40,8 +46,14 @@ Future<void> showAddItemDialog(
         : '',
   );
 
-  bool showCalendar = existingItem?.selectedDate != null;
   DateTime? selectedDate = existingItem?.selectedDate;
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // กำหนดค่าเริ่มต้นของตัวเลือกวันที่
+  DateSelectionOption dateSelectionOption = DateSelectionOption.none;
+  if (selectedDate != null) {
+    dateSelectionOption = DateSelectionOption.manual;
+  }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   return showDialog(
     context: context,
@@ -55,6 +67,7 @@ Future<void> showAddItemDialog(
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextFormField(
                       controller: titleController,
@@ -87,31 +100,100 @@ Future<void> showAddItemDialog(
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
                     ),
                     const Divider(height: 24),
-                    CheckboxListTile(
-                      title: const Text("ສະແດງວັນທີ"),
-                      value: showCalendar,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          showCalendar = value!;
-                          if (!showCalendar) {
-                            selectedDate = null;
-                          }
-                        });
-                      },
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
+                    
+                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                    // UI ใหม่สำหรับเลือกวันที่
+                    const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
+                    Column(
+                      children: [
+                        RadioListTile<DateSelectionOption>(
+                          title: const Text('ບໍ່ລະບຸວັນທີ'),
+                          value: DateSelectionOption.none,
+                          groupValue: dateSelectionOption,
+                          onChanged: (value) {
+                            setState(() {
+                              dateSelectionOption = value!;
+                              selectedDate = null;
+                            });
+                          },
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        RadioListTile<DateSelectionOption>(
+                          title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
+                          value: DateSelectionOption.today,
+                          groupValue: dateSelectionOption,
+                          onChanged: (value) {
+                            setState(() {
+                              dateSelectionOption = value!;
+                              selectedDate = DateTime.now();
+                            });
+                          },
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        RadioListTile<DateSelectionOption>(
+                          title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
+                          value: DateSelectionOption.manual,
+                          groupValue: dateSelectionOption,
+                          onChanged: (value) {
+                            setState(() {
+                              dateSelectionOption = value!;
+                              // ถ้าเคยเลือกวันที่ไว้แล้ว ให้ใช้ค่าเดิม
+                              // ถ้ายังไม่เคย ให้เป็น null รอผู้ใช้กดปุ่ม
+                              if (existingItem?.selectedDate == null) {
+                                selectedDate = null;
+                              }
+                            });
+                          },
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ],
                     ),
-                    if (showCalendar)
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.calendar_today),
-                        label: Text(selectedDate == null ? 'ເລືອກວັນທີ' : DateFormat('dd MMMM yyyy').format(selectedDate!)),
-                        onPressed: () async {
-                          final DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2101),);
-                          if (picked != null && picked != selectedDate) {
-                            setState(() { selectedDate = picked; });
-                          }
-                        },
+
+                    // แสดงผลลัพธ์และปุ่มตามตัวเลือก
+                    if (dateSelectionOption == DateSelectionOption.today && selectedDate != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                        child: Text(
+                          'วันที่ที่เลือก: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                          style: AppTextStyles.body.copyWith(color: AppColors.primary),
+                        ),
                       ),
+                    
+                    if (dateSelectionOption == DateSelectionOption.manual)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                             ElevatedButton.icon(
+                              icon: const Icon(Icons.calendar_today),
+                              label: const Text('ເລືອກວັນທີ'),
+                              onPressed: () async {
+                                final DateTime? picked = await showDatePicker(
+                                  context: context,
+                                  locale: const Locale('lo'),
+                                  initialDate: selectedDate ?? DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime(2101),
+                                );
+                                if (picked != null && picked != selectedDate) {
+                                  setState(() {
+                                    selectedDate = picked;
+                                  });
+                                }
+                              },
+                            ),
+                            if (selectedDate != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'วันที่ที่เลือก: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                                style: AppTextStyles.body.copyWith(color: AppColors.primary),
+                              ),
+                            ]
+                          ],
+                        ),
+                      ),
+                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                   ],
                 ),
               ),
@@ -131,7 +213,7 @@ Future<void> showAddItemDialog(
                     final double amountKip = double.tryParse(cleanAmountKip) ?? 0.0;
                     final double amountThb = double.tryParse(cleanAmountThb) ?? 0.0;
                     final double amountUsd = double.tryParse(cleanAmountUsd) ?? 0.0;
-                   
+                  
                     if (existingItem == null) {
                       final newItem = ItemModel(
                         title: titleController.text,
@@ -140,12 +222,10 @@ Future<void> showAddItemDialog(
                         amountThb: amountThb,
                         amountUsd: amountUsd,
                         selectedDate: selectedDate,
-                        sortOrder: 0, 
+                        sortOrder: 0,
                       );
                       vm.addItem(newItem);
                     } else {
-                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                      // แก้ไขโดยการสร้าง Instance ใหม่ เพื่อให้ค่า null ถูกบันทึกได้ถูกต้อง
                       final updatedItem = ItemModel(
                         id: existingItem.id,
                         title: titleController.text,
@@ -153,13 +233,11 @@ Future<void> showAddItemDialog(
                         amount: amountKip,
                         amountThb: amountThb,
                         amountUsd: amountUsd,
-                        selectedDate: selectedDate, // ส่งค่า null ไปได้เมื่อติ๊กออก
-                        // คงค่าเดิมที่ไม่ถูกแก้ไขใน dialog
+                        selectedDate: selectedDate,
                         sortOrder: existingItem.sortOrder,
                         creationTimestamp: existingItem.creationTimestamp,
                         lastActivityTimestamp: existingItem.lastActivityTimestamp,
                       );
-                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                       vm.updateItem(updatedItem);
                     }
                     Navigator.of(dialogContext).pop();

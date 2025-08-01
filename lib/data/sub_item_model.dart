@@ -1,6 +1,7 @@
 class SubItemModel {
   final int? id;
-  final int parentId;
+  final int parentId; // ID ของ ItemModel (โปรเจกต์หลัก)
+  final int? childOf; // ID ของ SubItemModel ที่เป็นแม่
   final String title;
   final String? description;
   final double? quantity;
@@ -14,6 +15,7 @@ class SubItemModel {
   SubItemModel({
     this.id,
     required this.parentId,
+    this.childOf,
     required this.title,
     this.description,
     this.quantity,
@@ -28,6 +30,7 @@ class SubItemModel {
   SubItemModel copyWith({
     int? id,
     int? parentId,
+    int? childOf,
     String? title,
     String? description,
     double? quantity,
@@ -41,6 +44,7 @@ class SubItemModel {
     return SubItemModel(
       id: id ?? this.id,
       parentId: parentId ?? this.parentId,
+      childOf: childOf ?? this.childOf,
       title: title ?? this.title,
       description: description ?? this.description,
       quantity: quantity ?? this.quantity,
@@ -56,6 +60,7 @@ class SubItemModel {
   Map<String, Object?> toMap() => {
         'id': id,
         'parentId': parentId,
+        'childOf': childOf,
         'title': title,
         'description': description,
         'quantity': quantity,
@@ -70,6 +75,7 @@ class SubItemModel {
   static SubItemModel fromMap(Map<String, Object?> json) => SubItemModel(
         id: json['id'] as int?,
         parentId: json['parentId'] as int,
+        childOf: json['childOf'] as int?,
         title: json['title'] as String,
         description: json['description'] as String?,
         quantity: (json['quantity'] as num?)?.toDouble(),
