@@ -32,7 +32,7 @@ const LinearGradient headerGradient = LinearGradient(
 
 // --- คลาสสำหรับเก็บสไตล์ตัวอักษร ---
 class AppTextStyles {
-  static const String fontFamily = 'Saysettha OT';
+  static const String fontFamily = 'NotoSansLao';
 
   static const TextStyle subText = TextStyle(
     fontFamily: fontFamily,

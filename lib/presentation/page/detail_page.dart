@@ -295,18 +295,18 @@ class _DetailPageState extends State<DetailPage> {
               : BoxDecoration(
                   image:
                       vm.settings.backgroundImagePath != null &&
-                          vm.settings.backgroundImagePath!.isNotEmpty
-                      ? DecorationImage(
-                          image: FileImage(
-                            File(vm.settings.backgroundImagePath!),
-                          ),
-                          fit: BoxFit.cover,
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withOpacity(0.3),
-                            BlendMode.darken,
-                          ),
-                        )
-                      : null,
+                              vm.settings.backgroundImagePath!.isNotEmpty
+                          ? DecorationImage(
+                              image: FileImage(
+                                File(vm.settings.backgroundImagePath!),
+                              ),
+                              fit: BoxFit.cover,
+                              colorFilter: ColorFilter.mode(
+                                Colors.black.withOpacity(0.3),
+                                BlendMode.darken,
+                              ),
+                            )
+                          : null,
                   gradient: headerGradient, // ใช้ Gradient เป็น Fallback
                 ),
           child: Scaffold(
@@ -379,17 +379,15 @@ class _DetailPageState extends State<DetailPage> {
                         vm.toggleAmountVisibility();
                       },
                     ),
-                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
                     IconButton(
                       icon: Icon(
-                        Icons.picture_as_pdf_outlined,
+                        Icons.share_outlined, 
                         color: _isScrolled
                             ? AppColors.primary
                             : AppColors.textOnPrimary,
                       ),
                       onPressed: () async {
-                        // เพิ่มการเรียกใช้ PDF Exporter
-                        await PdfExporter.generateAndPrintPdf(
+                        await PdfExporter.generateAndSharePdf(
                           item,
                           _subItemsTree,
                           _hierarchy,
@@ -397,7 +395,6 @@ class _DetailPageState extends State<DetailPage> {
                         );
                       },
                     ),
-                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                   ],
                   title: _isScrolled
                       ? Text(
@@ -480,8 +477,8 @@ class _DetailPageState extends State<DetailPage> {
                       child: _isSubItemsLoading
                           ? const Center(child: CircularProgressIndicator())
                           : _subItemsTree.isEmpty
-                          ? _buildEmptySubItems()
-                          : _buildSubItemTree(_subItemsTree, 0, item),
+                              ? _buildEmptySubItems()
+                              : _buildSubItemTree(_subItemsTree, 0, item),
                     ),
                   ),
                 ),
@@ -989,248 +986,251 @@ class _DetailPageState extends State<DetailPage> {
               content: Form(
                 key: formKey,
                 child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isEditing)
-                        Text(
-                          "ຫົວຂໍ້: $titlePrefix",
-                          style: AppTextStyles.body.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      TextFormField(
-                        controller: titleController,
-                        decoration: const InputDecoration(labelText: 'ຫົວຂໍ້'),
-                        validator: (v) =>
-                            v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້ກ່ອນ' : null,
-                      ),
-                      TextFormField(
-                        controller: descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'ລາຍລະອຽດ (ລົງແຖວເພື່ອເພີ່ມລາຍການ)',
-                        ),
-                        keyboardType: TextInputType.multiline,
-                        maxLines: null,
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: TextFormField(
-                              controller: quantityController,
-                              decoration: const InputDecoration(
-                                labelText: 'ຈຳນວນ',
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 3,
-                            child: DropdownButtonFormField<String>(
-                              value: selectedUnit,
-                              hint: const Text('ໜ່ວຍ'),
-                              items: units
-                                  .map(
-                                    (String unit) => DropdownMenuItem<String>(
-                                      value: unit,
-                                      child: Text(unit),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (newValue) =>
-                                  setStateDialog(() => selectedUnit = newValue),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              controller: laborCostController,
-                              decoration: const InputDecoration(
-                                labelText: 'ຄ່າແຮງ',
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                CurrencyInputFormatter(),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 2,
-                            child: DropdownButtonFormField<String>(
-                              value: selectedLaborCurrency,
-                              items: Currency.values
-                                  .map(
-                                    (c) => DropdownMenuItem(
-                                      value: c.code,
-                                      child: Text(c.symbol),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) {
-                                setStateDialog(() {
-                                  selectedLaborCurrency = v!;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: TextFormField(
-                              controller: materialCostController,
-                              decoration: const InputDecoration(
-                                labelText: 'ຄ່າວັດສະດຸ',
-                              ),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                CurrencyInputFormatter(),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            flex: 2,
-                            child: DropdownButtonFormField<String>(
-                              value: selectedMaterialCurrency,
-                              items: Currency.values
-                                  .map(
-                                    (c) => DropdownMenuItem(
-                                      value: c.code,
-                                      child: Text(c.symbol),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) {
-                                setStateDialog(() {
-                                  selectedMaterialCurrency = v!;
-                                });
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-
-                      // UI ใหม่สำหรับเลือกวันที่ (พร้อมคำแปลภาษาลาว)
-                      const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
-                      Column(
-                        children: [
-                          RadioListTile<DateSelectionOption>(
-                            title: const Text('ບໍ່ລະບຸວັນທີ'),
-                            value: DateSelectionOption.none,
-                            groupValue: dateSelectionOption,
-                            onChanged: (value) {
-                              setStateDialog(() {
-                                dateSelectionOption = value!;
-                                selectedDate = null;
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          RadioListTile<DateSelectionOption>(
-                            title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
-                            value: DateSelectionOption.today,
-                            groupValue: dateSelectionOption,
-                            onChanged: (value) {
-                              setStateDialog(() {
-                                dateSelectionOption = value!;
-                                selectedDate = DateTime.now();
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          RadioListTile<DateSelectionOption>(
-                            title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
-                            value: DateSelectionOption.manual,
-                            groupValue: dateSelectionOption,
-                            onChanged: (value) {
-                              setStateDialog(() {
-                                dateSelectionOption = value!;
-                                if (existingSubItem?.selectedDate == null) {
-                                  selectedDate = null;
-                                }
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ],
-                      ),
-                      if (dateSelectionOption == DateSelectionOption.today &&
-                          selectedDate != null)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            left: 16.0,
-                            bottom: 8.0,
-                          ),
-                          child: Text(
-                            'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                  child: Container(
+                    width: MediaQuery.of(context).size.width,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!isEditing)
+                          Text(
+                            "ຫົວຂໍ້: $titlePrefix",
                             style: AppTextStyles.body.copyWith(
-                              color: AppColors.primary,
+                              color: AppColors.textPrimary,
                             ),
                           ),
+                        TextFormField(
+                          controller: titleController,
+                          decoration: const InputDecoration(labelText: 'ຫົວຂໍ້'),
+                          validator: (v) =>
+                              v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້ກ່ອນ' : null,
                         ),
-                      if (dateSelectionOption == DateSelectionOption.manual)
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            left: 16.0,
-                            bottom: 8.0,
+                        TextFormField(
+                          controller: descriptionController,
+                          decoration: const InputDecoration(
+                            labelText: 'ລາຍລະອຽດ (ລົງແຖວເພື່ອເພີ່ມລາຍການ)',
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ElevatedButton.icon(
-                                icon: const Icon(Icons.calendar_today),
-                                label: const Text('ເລືອກວັນທີ'),
-                                onPressed: () async {
-                                  final DateTime? picked = await showDatePicker(
-                                    context: context,
-                                    locale: const Locale('lo'),
-                                    initialDate: selectedDate ?? DateTime.now(),
-                                    firstDate: DateTime(2000),
-                                    lastDate: DateTime(2101),
-                                  );
-                                  if (picked != null &&
-                                      picked != selectedDate) {
-                                    setStateDialog(() {
-                                      selectedDate = picked;
-                                    });
-                                  }
+                          keyboardType: TextInputType.multiline,
+                          maxLines: null,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: TextFormField(
+                                controller: quantityController,
+                                decoration: const InputDecoration(
+                                  labelText: 'ຈຳນວນ',
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 3,
+                              child: DropdownButtonFormField<String>(
+                                value: selectedUnit,
+                                hint: const Text('ໜ່ວຍ'),
+                                items: units
+                                    .map(
+                                      (String unit) => DropdownMenuItem<String>(
+                                        value: unit,
+                                        child: Text(unit),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (newValue) =>
+                                    setStateDialog(() => selectedUnit = newValue),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextFormField(
+                                controller: laborCostController,
+                                decoration: const InputDecoration(
+                                  labelText: 'ຄ່າແຮງ',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  CurrencyInputFormatter(),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 2,
+                              child: DropdownButtonFormField<String>(
+                                value: selectedLaborCurrency,
+                                items: Currency.values
+                                    .map(
+                                      (c) => DropdownMenuItem(
+                                        value: c.code,
+                                        child: Text(c.symbol),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) {
+                                  setStateDialog(() {
+                                    selectedLaborCurrency = v!;
+                                  });
                                 },
                               ),
-                              if (selectedDate != null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
-                                  style: AppTextStyles.body.copyWith(
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                    ],
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextFormField(
+                                controller: materialCostController,
+                                decoration: const InputDecoration(
+                                  labelText: 'ຄ່າວັດສະດຸ',
+                                ),
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  CurrencyInputFormatter(),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 2,
+                              child: DropdownButtonFormField<String>(
+                                value: selectedMaterialCurrency,
+                                items: Currency.values
+                                    .map(
+                                      (c) => DropdownMenuItem(
+                                        value: c.code,
+                                        child: Text(c.symbol),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: (v) {
+                                  setStateDialog(() {
+                                    selectedMaterialCurrency = v!;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 24),
+                    
+                        // UI ใหม่สำหรับเลือกวันที่ (พร้อมคำแปลภาษาลาว)
+                        const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
+                        Column(
+                          children: [
+                            RadioListTile<DateSelectionOption>(
+                              title: const Text('ບໍ່ລະບຸວັນທີ'),
+                              value: DateSelectionOption.none,
+                              groupValue: dateSelectionOption,
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  dateSelectionOption = value!;
+                                  selectedDate = null;
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            RadioListTile<DateSelectionOption>(
+                              title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
+                              value: DateSelectionOption.today,
+                              groupValue: dateSelectionOption,
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  dateSelectionOption = value!;
+                                  selectedDate = DateTime.now();
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            RadioListTile<DateSelectionOption>(
+                              title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
+                              value: DateSelectionOption.manual,
+                              groupValue: dateSelectionOption,
+                              onChanged: (value) {
+                                setStateDialog(() {
+                                  dateSelectionOption = value!;
+                                  if (existingSubItem?.selectedDate == null) {
+                                    selectedDate = null;
+                                  }
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ],
+                        ),
+                        if (dateSelectionOption == DateSelectionOption.today &&
+                            selectedDate != null)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left: 16.0,
+                              bottom: 8.0,
+                            ),
+                            child: Text(
+                              'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                              style: AppTextStyles.body.copyWith(
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ),
+                        if (dateSelectionOption == DateSelectionOption.manual)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left: 16.0,
+                              bottom: 8.0,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.calendar_today),
+                                  label: const Text('ເລືອກວັນທີ'),
+                                  onPressed: () async {
+                                    final DateTime? picked = await showDatePicker(
+                                      context: context,
+                                      locale: const Locale('lo'),
+                                      initialDate: selectedDate ?? DateTime.now(),
+                                      firstDate: DateTime(2000),
+                                      lastDate: DateTime(2101),
+                                    );
+                                    if (picked != null &&
+                                        picked != selectedDate) {
+                                      setStateDialog(() {
+                                        selectedDate = picked;
+                                      });
+                                    }
+                                  },
+                                ),
+                                if (selectedDate != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                                    style: AppTextStyles.body.copyWith(
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1349,98 +1349,103 @@ class _DetailPageState extends State<DetailPage> {
                     ? 'ແກ້ໄຂງວດທີ່ $quarterNumber'
                     : 'ເພີ່ມງວດທີ່ $quarterNumber',
               ),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: amountKipController,
-                        decoration: InputDecoration(
-                          labelText: 'ງົບປະມານ (${Currency.KIP.laoName})',
-                          icon: Text(
-                            Currency.KIP.symbol,
-                            style: const TextStyle(fontSize: 18),
+              content: Container(
+                // height: MediaQuery.of(context).size.height * 0.5,
+                width: MediaQuery.of(context).size.width,
+                child: Form(
+                  key: formKey,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: amountKipController,
+                          decoration: InputDecoration(
+                            labelText: 'ງົບປະມານ (${Currency.KIP.laoName})',
+                            icon: Text(
+                              Currency.KIP.symbol,
+                              style: const TextStyle(fontSize: 18),
+                            ),
                           ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            CurrencyInputFormatter(),
+                          ],
                         ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          CurrencyInputFormatter(),
-                        ],
-                      ),
-                      TextFormField(
-                        controller: amountThbController,
-                        decoration: InputDecoration(
-                          labelText: 'ງົບປະມານ (${Currency.THB.laoName})',
-                          icon: Text(
-                            Currency.THB.symbol,
-                            style: const TextStyle(fontSize: 18),
+                        TextFormField(
+                          controller: amountThbController,
+                          decoration: InputDecoration(
+                            labelText: 'ງົບປະມານ (${Currency.THB.laoName})',
+                            icon: Text(
+                              Currency.THB.symbol,
+                              style: const TextStyle(fontSize: 18),
+                            ),
                           ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            CurrencyInputFormatter(),
+                          ],
                         ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          CurrencyInputFormatter(),
-                        ],
-                      ),
-                      TextFormField(
-                        controller: amountUsdController,
-                        decoration: InputDecoration(
-                          labelText: 'ງົບປະມານ (${Currency.USD.laoName})',
-                          icon: Text(
-                            Currency.USD.symbol,
-                            style: const TextStyle(fontSize: 18),
+                        TextFormField(
+                          controller: amountUsdController,
+                          decoration: InputDecoration(
+                            labelText: 'ງົບປະມານ (${Currency.USD.laoName})',
+                            icon: Text(
+                              Currency.USD.symbol,
+                              style: const TextStyle(fontSize: 18),
+                            ),
                           ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            CurrencyInputFormatter(),
+                          ],
                         ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          CurrencyInputFormatter(),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      CheckboxListTile(
-                        title: const Text("ສະແດງວັນທີ"),
-                        value: showCalendar,
-                        onChanged: (bool? value) async {
-                          if (value == true) {
-                            final DateTime? picked = await showDatePicker(
-                              context: context,
-                              locale: const Locale('lo'),
-                              initialDate: selectedDate ?? DateTime.now(),
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2101),
-                            );
-                            if (picked != null) {
+                        const Divider(height: 24),
+                        CheckboxListTile(
+                          title: const Text("ສະແດງວັນທີ"),
+                          value: showCalendar,
+                          onChanged: (bool? value) async {
+                            if (value == true) {
+                              final DateTime? picked = await showDatePicker(
+                                context: context,
+                                locale: const Locale('lo'),
+                                initialDate: selectedDate ?? DateTime.now(),
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2101),
+                              );
+                              if (picked != null) {
+                                setStateDialog(() {
+                                  showCalendar = true;
+                                  selectedDate = picked;
+                                });
+                              }
+                            } else {
                               setStateDialog(() {
-                                showCalendar = true;
-                                selectedDate = picked;
+                                showCalendar = false;
+                                selectedDate = null;
                               });
                             }
-                          } else {
-                            setStateDialog(() {
-                              showCalendar = false;
-                              selectedDate = null;
-                            });
-                          }
-                        },
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                        subtitle: showCalendar && selectedDate != null
-                            ? Text(
-                                DateFormat(
-                                  'dd MMMM yyyy',
-                                  'lo',
-                                ).format(selectedDate!),
-                              )
-                            : null,
-                      ),
-                    ],
+                          },
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: EdgeInsets.zero,
+                          subtitle: showCalendar && selectedDate != null
+                              ? Text(
+                                  DateFormat(
+                                    'dd MMMM yyyy',
+                                    'lo',
+                                  ).format(selectedDate!),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
+              /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
               actions: [
                 if (isEditing)
                   TextButton(
@@ -1450,7 +1455,7 @@ class _DetailPageState extends State<DetailPage> {
                       style: TextStyle(color: AppColors.danger),
                     ),
                   ),
-                const Spacer(),
+                // const Spacer(), // <- บรรทัดนี้คือตัวปัญหาที่ทำให้แอปพัง
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('ຍົກເລີກ'),
@@ -1485,6 +1490,7 @@ class _DetailPageState extends State<DetailPage> {
                   child: const Text('ບັນທຶກ'),
                 ),
               ],
+              /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
             );
           },
         );

@@ -65,136 +65,139 @@ Future<void> showAddItemDialog(
             content: Form(
               key: formKey,
               child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: titleController,
-                      decoration: const InputDecoration(labelText: 'ຫົວຂໍ້', icon: Icon(Icons.title)),
-                      validator: (v) => v!.isEmpty ? 'ກະລຸນາໄສຫົວຂໍ້' : null,
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: descriptionController,
-                      decoration: const InputDecoration(labelText: 'ຄຳອະທິບາຍ', icon: Icon(Icons.description)),
-                      validator: (v) => v!.isEmpty ? 'ກະລຸນາໄສຄຳອະທິບາຍ' : null,
-                    ),
-                    const Divider(height: 24),
-                    TextFormField(
-                      controller: amountKipController,
-                      decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.KIP.laoName})', icon: Text(Currency.KIP.symbol, style: const TextStyle(fontSize: 18))),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
-                    ),
-                    TextFormField(
-                      controller: amountThbController,
-                      decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.THB.laoName})', icon: Text(Currency.THB.symbol, style: const TextStyle(fontSize: 18))),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
-                    ),
-                    TextFormField(
-                      controller: amountUsdController,
-                      decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.USD.laoName})', icon: Text(Currency.USD.symbol, style: const TextStyle(fontSize: 18))),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
-                    ),
-                    const Divider(height: 24),
-                    
-                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                    // UI ใหม่สำหรับเลือกวันที่
-                    const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
-                    Column(
-                      children: [
-                        RadioListTile<DateSelectionOption>(
-                          title: const Text('ບໍ່ລະບຸວັນທີ'),
-                          value: DateSelectionOption.none,
-                          groupValue: dateSelectionOption,
-                          onChanged: (value) {
-                            setState(() {
-                              dateSelectionOption = value!;
-                              selectedDate = null;
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        RadioListTile<DateSelectionOption>(
-                          title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
-                          value: DateSelectionOption.today,
-                          groupValue: dateSelectionOption,
-                          onChanged: (value) {
-                            setState(() {
-                              dateSelectionOption = value!;
-                              selectedDate = DateTime.now();
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        RadioListTile<DateSelectionOption>(
-                          title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
-                          value: DateSelectionOption.manual,
-                          groupValue: dateSelectionOption,
-                          onChanged: (value) {
-                            setState(() {
-                              dateSelectionOption = value!;
-                              // ถ้าเคยเลือกวันที่ไว้แล้ว ให้ใช้ค่าเดิม
-                              // ถ้ายังไม่เคย ให้เป็น null รอผู้ใช้กดปุ่ม
-                              if (existingItem?.selectedDate == null) {
+                child: Container(
+                  width: MediaQuery.of(context).size.width,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: titleController,
+                        decoration: const InputDecoration(labelText: 'ຫົວຂໍ້', icon: Icon(Icons.title)),
+                        validator: (v) => v!.isEmpty ? 'ກະລຸນາໄສຫົວຂໍ້' : null,
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: descriptionController,
+                        decoration: const InputDecoration(labelText: 'ຄຳອະທິບາຍ', icon: Icon(Icons.description)),
+                        validator: (v) => v!.isEmpty ? 'ກະລຸນາໄສຄຳອະທິບາຍ' : null,
+                      ),
+                      const Divider(height: 24),
+                      TextFormField(
+                        controller: amountKipController,
+                        decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.KIP.laoName})', icon: Text(Currency.KIP.symbol, style: const TextStyle(fontSize: 18))),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
+                      ),
+                      TextFormField(
+                        controller: amountThbController,
+                        decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.THB.laoName})', icon: Text(Currency.THB.symbol, style: const TextStyle(fontSize: 18))),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
+                      ),
+                      TextFormField(
+                        controller: amountUsdController,
+                        decoration: InputDecoration(labelText: 'ງົບປະມານ (${Currency.USD.laoName})', icon: Text(Currency.USD.symbol, style: const TextStyle(fontSize: 18))),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
+                      ),
+                      const Divider(height: 24),
+                      
+                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                      // UI ใหม่สำหรับเลือกวันที่
+                      const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
+                      Column(
+                        children: [
+                          RadioListTile<DateSelectionOption>(
+                            title: const Text('ບໍ່ລະບຸວັນທີ'),
+                            value: DateSelectionOption.none,
+                            groupValue: dateSelectionOption,
+                            onChanged: (value) {
+                              setState(() {
+                                dateSelectionOption = value!;
                                 selectedDate = null;
-                              }
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ],
-                    ),
-
-                    // แสดงผลลัพธ์และปุ่มตามตัวเลือก
-                    if (dateSelectionOption == DateSelectionOption.today && selectedDate != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
-                        child: Text(
-                          'วันที่ที่เลือก: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
-                          style: AppTextStyles.body.copyWith(color: AppColors.primary),
-                        ),
-                      ),
-                    
-                    if (dateSelectionOption == DateSelectionOption.manual)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                             ElevatedButton.icon(
-                              icon: const Icon(Icons.calendar_today),
-                              label: const Text('ເລືອກວັນທີ'),
-                              onPressed: () async {
-                                final DateTime? picked = await showDatePicker(
-                                  context: context,
-                                  locale: const Locale('lo'),
-                                  initialDate: selectedDate ?? DateTime.now(),
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2101),
-                                );
-                                if (picked != null && picked != selectedDate) {
-                                  setState(() {
-                                    selectedDate = picked;
-                                  });
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          RadioListTile<DateSelectionOption>(
+                            title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
+                            value: DateSelectionOption.today,
+                            groupValue: dateSelectionOption,
+                            onChanged: (value) {
+                              setState(() {
+                                dateSelectionOption = value!;
+                                selectedDate = DateTime.now();
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          RadioListTile<DateSelectionOption>(
+                            title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
+                            value: DateSelectionOption.manual,
+                            groupValue: dateSelectionOption,
+                            onChanged: (value) {
+                              setState(() {
+                                dateSelectionOption = value!;
+                                // ถ้าเคยเลือกวันที่ไว้แล้ว ให้ใช้ค่าเดิม
+                                // ถ้ายังไม่เคย ให้เป็น null รอผู้ใช้กดปุ่ม
+                                if (existingItem?.selectedDate == null) {
+                                  selectedDate = null;
                                 }
-                              },
-                            ),
-                            if (selectedDate != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                'วันที่ที่เลือก: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
-                                style: AppTextStyles.body.copyWith(color: AppColors.primary),
-                              ),
-                            ]
-                          ],
-                        ),
+                              });
+                            },
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ],
                       ),
-                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
-                  ],
+                  
+                      // แสดงผลลัพธ์และปุ่มตามตัวเลือก
+                      if (dateSelectionOption == DateSelectionOption.today && selectedDate != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                          child: Text(
+                            'วันที่ที่เลือก: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                            style: AppTextStyles.body.copyWith(color: AppColors.primary),
+                          ),
+                        ),
+                      
+                      if (dateSelectionOption == DateSelectionOption.manual)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                               ElevatedButton.icon(
+                                icon: const Icon(Icons.calendar_today),
+                                label: const Text('ເລືອກວັນທີ'),
+                                onPressed: () async {
+                                  final DateTime? picked = await showDatePicker(
+                                    context: context,
+                                    locale: const Locale('lo'),
+                                    initialDate: selectedDate ?? DateTime.now(),
+                                    firstDate: DateTime(2000),
+                                    lastDate: DateTime(2101),
+                                  );
+                                  if (picked != null && picked != selectedDate) {
+                                    setState(() {
+                                      selectedDate = picked;
+                                    });
+                                  }
+                                },
+                              ),
+                              if (selectedDate != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'วันที่ที่เลือก: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
+                                  style: AppTextStyles.body.copyWith(color: AppColors.primary),
+                                ),
+                              ]
+                            ],
+                          ),
+                        ),
+                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+                    ],
+                  ),
                 ),
               ),
             ),

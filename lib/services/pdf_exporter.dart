@@ -9,7 +9,9 @@ import '../data/sub_item_model.dart';
 import '../presentation/core/app_currencies.dart';
 
 class PdfExporter {
-  static Future<void> generateAndPrintPdf(
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข (ทั้งฟังก์ชัน) ▼ ------------------ */
+  // เปลี่ยนชื่อฟังก์ชันจาก generateAndPrintPdf เป็น generateAndSharePdf
+  static Future<void> generateAndSharePdf(
     ItemModel parentItem,
     List<SubItemModel> topLevelSubItems,
     Map<int?, List<SubItemModel>> hierarchy,
@@ -17,7 +19,7 @@ class PdfExporter {
   ) async {
     final pdf = pw.Document();
 
-    final fontData = await rootBundle.load("assets/fonts/Saysettha_OT.ttf");
+    final fontData = await rootBundle.load("assets/fonts/NotoSansLao.ttf");
     final ttf = pw.Font.ttf(fontData);
     final laoStyle = pw.TextStyle(font: ttf, fontSize: 10);
     final laoStyleBold = pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold);
@@ -49,10 +51,16 @@ class PdfExporter {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
+    // สร้างชื่อไฟล์จากหัวข้อโปรเจกต์
+    final String fileName = '${parentItem.title.replaceAll(RegExp(r'[^\w\s]+'), '')}.pdf';
+
+    // เปลี่ยนจาก layoutPdf เป็น sharePdf
+    await Printing.sharePdf(
+      bytes: await pdf.save(),
+      filename: fileName,
     );
   }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   static pw.Widget _buildPdfHeader(ItemModel item, pw.TextStyle style, pw.TextStyle styleBold) {
     return pw.Column(
@@ -66,8 +74,6 @@ class PdfExporter {
     );
   }
 
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข (ทั้งฟังก์ชัน) ▼ ------------------ */
-  // สร้างตารางข้อมูลหลัก (เวอร์ชันแก้ไขให้กลับมาใช้โครงสร้างเดิมและแยกสกุลเงิน)
   static pw.Widget _buildPdfTable(
     List<SubItemModel> topLevelItems,
     Map<int?, List<SubItemModel>> hierarchy,
@@ -75,7 +81,6 @@ class PdfExporter {
     pw.TextStyle style,
     pw.TextStyle styleBold,
   ) {
-    // กลับมาใช้ Header เดิม
     final headers = ['ລາຍການ', 'ຈຳນວນ', 'ຄ່າແຮງ', 'ຄ່າວັດສະດຸ', 'ລາຄາລວມ', 'ໝາຍເຫດ'];
 
     final headerRow = pw.TableRow(
@@ -96,24 +101,21 @@ class PdfExporter {
       }),
     );
     
-    // สร้างแถวข้อมูลทั้งหมดด้วยฟังก์ชัน Recursive
     final dataRows = _buildPdfRowsRecursive(topLevelItems, hierarchy, calculatedTotals, 0, style, styleBold);
 
     return pw.Table(
-      // กลับมาใช้ความกว้างของคอลัมน์เดิม
       columnWidths: const {
         0: pw.FlexColumnWidth(3),
         1: pw.FlexColumnWidth(1.2),
-        2: pw.FlexColumnWidth(1.5), // กว้างขึ้นเล็กน้อยเพื่อรองรับสกุลเงิน
-        3: pw.FlexColumnWidth(1.5), // กว้างขึ้นเล็กน้อยเพื่อรองรับสกุลเงิน
-        4: pw.FlexColumnWidth(1.5), // กว้างขึ้นเล็กน้อยเพื่อรองรับสกุลเงิน
+        2: pw.FlexColumnWidth(1.5), 
+        3: pw.FlexColumnWidth(1.5), 
+        4: pw.FlexColumnWidth(1.5), 
         5: pw.FlexColumnWidth(1.5),
       },
       children: [headerRow, ...dataRows],
     );
   }
 
-  // ฟังก์ชัน Recursive สำหรับสร้างแถวของตารางตามลำดับชั้น
   static List<pw.TableRow> _buildPdfRowsRecursive(
     List<SubItemModel> items,
     Map<int?, List<SubItemModel>> hierarchy,
@@ -128,7 +130,6 @@ class PdfExporter {
       final totals = calculatedTotals[item.id] ?? {'quantity': 0.0, 'costs': {}};
       final totalCostsMap = totals['costs'] as Map<String, double>;
       
-      // สร้าง Widget สำหรับคอลัมน์ "ລາຄາລວມ" ที่แยกแต่ละสกุลเงิน
       final totalCostWidgets = <pw.Widget>[];
       totalCostsMap.forEach((currencyCode, cost) {
         if (cost > 0) {
@@ -154,15 +155,12 @@ class PdfExporter {
       final List<pw.Widget> rowChildren = [
         _buildItemColumn(item, level, style, styleBold),
         pw.Text('${totals['quantity'] ?? '-'} ${item.unit ?? ''}', style: style),
-        // คอลัมน์ค่าแรง (แสดงข้อมูลของ item นั้นๆ)
         item.laborCost != null && item.laborCost! > 0
             ? pw.Text('${NumberFormat("#,##0").format(item.laborCost)} ${CurrencyExtension.fromCode(item.laborCostCurrency!).laoName}', style: style)
             : pw.Text('-', style: style),
-        // คอลัมน์ค่าวัสดุ (แสดงข้อมูลของ item นั้นๆ)
         item.materialCost != null && item.materialCost! > 0
             ? pw.Text('${NumberFormat("#,##0").format(item.materialCost)} ${CurrencyExtension.fromCode(item.materialCostCurrency!).laoName}', style: style)
             : pw.Text('-', style: style),
-        // คอลัมน์ราคารวม (แสดงผลรวมของ item และลูกๆ ทั้งหมด)
         pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: totalCostWidgets.isNotEmpty ? totalCostWidgets : [pw.Text('-', style: style)],
@@ -187,7 +185,6 @@ class PdfExporter {
         ),
       );
 
-      // Recursive call for children
       final children = hierarchy[item.id] ?? [];
       if (children.isNotEmpty) {
         rows.addAll(_buildPdfRowsRecursive(children, hierarchy, calculatedTotals, level + 1, style, styleBold));
@@ -195,7 +192,6 @@ class PdfExporter {
     }
     return rows;
   }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   static pw.Widget _buildItemColumn(SubItemModel item, int level, pw.TextStyle style, pw.TextStyle styleBold) {
     final descriptionLines = (item.description ?? '')
@@ -205,7 +201,7 @@ class PdfExporter {
         .toList();
 
     return pw.Padding(
-      padding: pw.EdgeInsets.only(left: level * 15.0), // ย่อหน้าตาม level
+      padding: pw.EdgeInsets.only(left: level * 15.0), 
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         mainAxisAlignment: pw.MainAxisAlignment.start,
@@ -224,8 +220,6 @@ class PdfExporter {
     );
   }
 
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข (ทั้งฟังก์ชัน) ▼ ------------------ */
-  // แก้ไข Footer ให้รองรับหลายสกุลเงิน
   static pw.Widget _buildPdfFooter(ItemModel parentItem, Map<String, double> totalCosts, pw.TextStyle style, pw.TextStyle styleBold) {
     
     final budgetMap = {
@@ -266,5 +260,4 @@ class PdfExporter {
       ]
     );
   }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 }

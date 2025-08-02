@@ -67,7 +67,7 @@ class _HomeContentState extends State<HomeContent> {
               SliverAppBar(
                 backgroundColor: AppColors.primaryDark,
                 surfaceTintColor: Colors.transparent,
-                expandedHeight: 450.0,
+                expandedHeight: 480.0,
                 pinned: true,
                 collapsedHeight: 80.0,
                 actions: [
