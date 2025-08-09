@@ -51,92 +51,99 @@ class _HomeContentState extends State<HomeContent> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<HomeViewModel>(
-      builder: (context, vm, child) {
-        if (vm.isSettingsLoading) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // หุ้ม Scaffold ทั้งหมดด้วย GestureDetector
+    // เพื่อดักจับการแตะนอกพื้นที่ TextField และซ่อน Keyboard
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Consumer<HomeViewModel>(
+        builder: (context, vm, child) {
+          if (vm.isSettingsLoading) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
 
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          body: CustomScrollView(
-            controller: _scrollController, // ผูก controller กับ scroll view
-            slivers: <Widget>[
-              SliverAppBar(
-                backgroundColor: AppColors.primaryDark,
-                surfaceTintColor: Colors.transparent,
-                expandedHeight: 480.0,
-                pinned: true,
-                collapsedHeight: 80.0,
-                actions: [
-                  IconButton(
-                    icon: Icon(
-                      vm.areAmountsVisible ? Icons.visibility : Icons.visibility_off,
-                      color: AppColors.textOnPrimary,
+          return Scaffold(
+            backgroundColor: Colors.transparent,
+            body: CustomScrollView(
+              controller: _scrollController, // ผูก controller กับ scroll view
+              slivers: <Widget>[
+                SliverAppBar(
+                  backgroundColor: AppColors.primaryDark,
+                  surfaceTintColor: Colors.transparent,
+                  expandedHeight: 480.0,
+                  pinned: true,
+                  collapsedHeight: 80.0,
+                  actions: [
+                    IconButton(
+                      icon: Icon(
+                        vm.areAmountsVisible ? Icons.visibility : Icons.visibility_off,
+                        color: AppColors.textOnPrimary,
+                      ),
+                      onPressed: vm.toggleAmountVisibility,
                     ),
-                    onPressed: vm.toggleAmountVisibility,
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined, color: AppColors.textOnPrimary),
+                      onPressed: () => showSettingsDialog(context, vm),
+                    ),
+                  ],
+                  // Title for collapsed state: จะแสดงผลก็ต่อเมื่อ _isAppBarCollapsed เป็น true
+                  title: AnimatedOpacity(
+                    opacity: _isAppBarCollapsed ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: _buildCollapsedHeader(vm),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined, color: AppColors.textOnPrimary),
-                    onPressed: () => showSettingsDialog(context, vm),
-                  ),
-                ],
-                // Title for collapsed state: จะแสดงผลก็ต่อเมื่อ _isAppBarCollapsed เป็น true
-                title: AnimatedOpacity(
-                  opacity: _isAppBarCollapsed ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 300),
-                  child: _buildCollapsedHeader(vm),
-                ),
-                centerTitle: false,
-                titleSpacing: 0,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Container(
-                    decoration: vm.settings.useDefaultBackground
-                        ? const BoxDecoration(gradient: headerGradient)
-                        : BoxDecoration(
-                            image: vm.settings.backgroundImagePath != null && vm.settings.backgroundImagePath!.isNotEmpty
-                                ? DecorationImage(
-                                    image: FileImage(File(vm.settings.backgroundImagePath!)),
-                                    fit: BoxFit.cover,
-                                    colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.3), BlendMode.darken),
-                                  )
-                                : null,
-                            gradient: headerGradient,
-                          ),
-                    child: SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                        child: _buildExpandedHeader(vm),
+                  centerTitle: false,
+                  titleSpacing: 0,
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Container(
+                      decoration: vm.settings.useDefaultBackground
+                          ? const BoxDecoration(gradient: headerGradient)
+                          : BoxDecoration(
+                              image: vm.settings.backgroundImagePath != null && vm.settings.backgroundImagePath!.isNotEmpty
+                                  ? DecorationImage(
+                                      image: FileImage(File(vm.settings.backgroundImagePath!)),
+                                      fit: BoxFit.cover,
+                                      colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.3), BlendMode.darken),
+                                    )
+                                  : null,
+                              gradient: headerGradient,
+                            ),
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                          child: _buildExpandedHeader(vm),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: Container(
-                  constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - 80),
-                  clipBehavior: Clip.antiAlias,
-                  decoration: const BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(24),
-                      topRight: Radius.circular(24),
+                SliverToBoxAdapter(
+                  child: Container(
+                    constraints: BoxConstraints(minHeight: MediaQuery.of(context).size.height - 80),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: const BoxDecoration(
+                      color: AppColors.background,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(24),
+                        topRight: Radius.circular(24),
+                      ),
                     ),
+                    child: vm.isLoading
+                        ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
+                        : vm.items.isEmpty
+                            ? _buildEmptyState()
+                            : _buildItemsList(context, vm),
                   ),
-                  child: vm.isLoading
-                      ? const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
-                      : vm.items.isEmpty
-                          ? _buildEmptyState()
-                          : _buildItemsList(context, vm),
                 ),
-              ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   Widget _buildCollapsedHeader(HomeViewModel vm) {
@@ -473,10 +480,15 @@ class _HomeContentState extends State<HomeContent> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () async {
+          /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+          // แก้ไขการส่งข้อมูลไปยัง DetailPage
+          // จากเดิมส่งแค่ itemId เป็นการส่ง item object ทั้งก้อนไปเลย
+          // เพื่อลดการโหลดข้อมูลซ้ำและแก้ปัญหาหน้า Loading
           await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => DetailPage(itemId: item.id!)),
+            MaterialPageRoute(builder: (context) => DetailPage(item: item)),
           );
+          /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
           Provider.of<HomeViewModel>(context, listen: false).loadItems();
         },
         child: Padding(
@@ -584,7 +596,7 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
- 
+
   Widget _buildCardFinancialDetailRow({
     required Currency currency,
     required double budget,
@@ -748,10 +760,7 @@ class _AnimatedProgressBarState extends State<AnimatedProgressBar> with SingleTi
   @override
   Widget build(BuildContext context) {
     final percentage = (widget.total > 0) ? (widget.value / widget.total) : (widget.value > 0 ? 1.0 : 0.0);
-    
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // จุดนี้คือจุดที่เพิ่ม Logic การเปลี่ยนสีของ Progress Bar
-    // ตามเงื่อนไขที่คุณต้องการ (เขียว, เหลือง, แดง)
+
     Color progressBarColor;
     if (percentage > 1.0) {
       progressBarColor = Colors.red.shade400; // มากกว่า 100%
@@ -760,7 +769,6 @@ class _AnimatedProgressBarState extends State<AnimatedProgressBar> with SingleTi
     } else {
       progressBarColor = Colors.green.shade400; // น้อยกว่า 80%
     }
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
     return RotationTransition(
       turns: _animation,
@@ -783,10 +791,7 @@ class _AnimatedProgressBarState extends State<AnimatedProgressBar> with SingleTi
                 Container(
                   width: filledWidth,
                   decoration: BoxDecoration(
-                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                    // นำสีที่คำนวณไว้ด้านบนมาใช้งานกับ Progress Bar
                     color: progressBarColor,
-                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),

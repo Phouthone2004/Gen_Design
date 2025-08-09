@@ -5,17 +5,15 @@ import '../data/sub_item_model.dart';
 import '../data/quarterly_budget_model.dart';
 import '../services/db_service.dart';
 import '../presentation/core/app_currencies.dart';
-/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
 import '../data/settings_model.dart';
 import '../services/settings_service.dart';
-/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
 class HomeViewModel extends ChangeNotifier {
   List<ItemModel> _allItems = [];
   List<ItemModel> items = [];
   bool isLoading = false;
   String _searchQuery = '';
- 
+
   bool areAmountsVisible = true;
 
   Map<String, double> grandTotalBudget = {};
@@ -26,17 +24,14 @@ class HomeViewModel extends ChangeNotifier {
   int? selectedYearFilter;
   List<int> availableYears = [];
 
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
   late SettingsModel settings;
   bool isSettingsLoading = true;
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   HomeViewModel() {
     selectedYearFilter = DateTime.now().year;
     _initialize();
   }
 
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
   Future<void> _initialize() async {
     await loadSettings();
     await loadItems();
@@ -54,7 +49,6 @@ class HomeViewModel extends ChangeNotifier {
     await SettingsService.instance.saveSettings(newSettings);
     await loadSettings(); // Reload to update the UI
   }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   void toggleAmountVisibility() {
     areAmountsVisible = !areAmountsVisible;
@@ -103,7 +97,7 @@ class HomeViewModel extends ChangeNotifier {
   Future<void> loadItems() async {
     isLoading = true;
     notifyListeners();
-    
+  
     _initializeMaps();
 
     List<ItemModel> originalItems = await DBService.instance.readAllItems();
@@ -129,7 +123,7 @@ class HomeViewModel extends ChangeNotifier {
         .map((item) => DateTime.fromMillisecondsSinceEpoch(item.creationTimestamp!).year)
         .toSet();
     years.add(DateTime.now().year);
-    
+  
     availableYears = years.toList();
     availableYears.sort((a, b) => b.compareTo(a));
 
@@ -153,7 +147,7 @@ class HomeViewModel extends ChangeNotifier {
         for (final item in topLevelItems) {
             _calculateRecursiveTotals(item, hierarchy, calculatedTotals);
         }
-        
+      
         final projectTotalCost = { for (var c in Currency.values) c.code : 0.0 };
         for (final topLevelItem in topLevelItems) {
             final totals = calculatedTotals[topLevelItem.id];
@@ -173,7 +167,7 @@ class HomeViewModel extends ChangeNotifier {
         grandTotalCost[currencyCode] = total + (costMap[currencyCode] ?? 0);
       });
     });
-    
+  
     grandTotalBudget.forEach((currency, budget) {
       grandTotalRemaining[currency] = budget - (grandTotalCost[currency] ?? 0);
     });
@@ -259,7 +253,7 @@ class HomeViewModel extends ChangeNotifier {
 
   Future<void> addItem(ItemModel item) async {
     final allItems = await DBService.instance.readAllItems();
-    
+  
     final currentSystemYear = DateTime.now().year;
 
     final itemsInCurrentYear = allItems.where((i) {
@@ -292,7 +286,7 @@ class HomeViewModel extends ChangeNotifier {
       );
       await DBService.instance.createQuarterlyBudget(firstQuarter);
     }
-    
+  
     await loadItems();
   }
 
@@ -317,6 +311,24 @@ class HomeViewModel extends ChangeNotifier {
       lastActivityTimestamp: DateTime.now().millisecondsSinceEpoch
     );
     await DBService.instance.update(updatedItem);
+    
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // Logic แก้ไขบั๊ก: อัปเดตงบประมาณงวดที่ 1 ตามงบใหม่
+    final budgets = await DBService.instance.readQuarterlyBudgetsForParent(item.id!);
+    if (budgets.isNotEmpty) {
+      // ใช้ firstWhereOrNull จาก package:collection เพื่อความปลอดภัย
+      final firstQuarter = budgets.firstWhereOrNull((b) => b.quarterNumber == 1);
+      if (firstQuarter != null) {
+        final updatedQuarter = firstQuarter.copyWith(
+          amountKip: item.amount,
+          amountThb: item.amountThb,
+          amountUsd: item.amountUsd,
+        );
+        await DBService.instance.updateQuarterlyBudget(updatedQuarter);
+      }
+    }
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+
     await loadItems();
   }
 

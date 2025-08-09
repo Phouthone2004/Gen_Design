@@ -16,23 +16,32 @@ import '../core/app_styles.dart';
 import '../core/app_currencies.dart';
 import '../../services/pdf_exporter.dart';
 
-ItemModel _processItemData(Map<String, Object?> itemMap) {
-  return ItemModel.fromMap(itemMap);
-}
+/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+// ลบฟังก์ชันนี้ออกไป เพราะเราจะไม่ใช้ compute แล้ว
+// ItemModel _processItemData(Map<String, Object?> itemMap) {
+//   return ItemModel.fromMap(itemMap);
+// }
+/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
 // enum สำหรับจัดการตัวเลือกวันที่ในหน้านี้
 enum DateSelectionOption { none, today, manual }
 
 class DetailPage extends StatefulWidget {
-  final int itemId;
-  const DetailPage({super.key, required this.itemId});
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // เปลี่ยนจากการรับ itemId เป็นรับ ItemModel ทั้ง object
+  final ItemModel item;
+  const DetailPage({super.key, required this.item});
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   @override
   State<DetailPage> createState() => _DetailPageState();
 }
 
 class _DetailPageState extends State<DetailPage> {
-  late Future<ItemModel> _itemDetailFuture;
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // ลบ FutureBuilder และตัวแปรที่เกี่ยวข้องออก
+  // late Future<ItemModel> _itemDetailFuture;
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   final ScrollController _scrollController = ScrollController();
   late PageController _pageController;
   bool _isScrolled = false;
@@ -40,7 +49,10 @@ class _DetailPageState extends State<DetailPage> {
   List<SubItemModel> _subItemsTree = [];
   Map<int?, List<SubItemModel>> _hierarchy = {};
   Map<int, Map<String, dynamic>> _calculatedTotals = {};
-  bool _isSubItemsLoading = true;
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // ลบสถานะ loading ของ sub-items ออก เพื่อไม่ให้หน้าจอกระพริบ
+  // bool _isSubItemsLoading = true;
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   List<QuarterlyBudgetModel> _quarterlyBudgets = [];
   bool _isBudgetsLoading = true;
@@ -74,20 +86,23 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Future<void> _loadAllData() async {
-    final item = await (_itemDetailFuture = _loadItemDetails());
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // ไม่ต้องโหลด item หลักซ้ำแล้ว เพราะได้ข้อมูลมาจากหน้า Home
+    // final item = await (_itemDetailFuture = _loadItemDetails());
     await _loadAndStructureSubItems();
-    await _loadQuarterlyBudgets(item);
+    await _loadQuarterlyBudgets(widget.item); // ใช้ widget.item แทน
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   Future<void> _loadQuarterlyBudgets(ItemModel item) async {
     setState(() => _isBudgetsLoading = true);
     var budgets = await DBService.instance.readQuarterlyBudgetsForParent(
-      widget.itemId,
+      widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
     );
 
     if (budgets.isEmpty) {
       final firstQuarter = QuarterlyBudgetModel(
-        parentId: widget.itemId,
+        parentId: widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
         quarterNumber: 1,
         amountKip: item.amount,
         amountThb: item.amountThb,
@@ -107,16 +122,22 @@ class _DetailPageState extends State<DetailPage> {
     });
   }
 
-  Future<ItemModel> _loadItemDetails() async {
-    final itemMap = await DBService.instance.readItemAsMap(widget.itemId);
-    return await compute(_processItemData, itemMap);
-  }
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // ลบฟังก์ชัน _loadItemDetails เพราะไม่จำเป็นต้องโหลดข้อมูลซ้ำ
+  // Future<ItemModel> _loadItemDetails() async {
+  //   final itemMap = await DBService.instance.readItemAsMap(widget.itemId);
+  //   return await compute(_processItemData, itemMap);
+  // }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   Future<void> _loadAndStructureSubItems() async {
-    setState(() => _isSubItemsLoading = true);
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // ลบการตั้งค่า isSubItemsLoading เพื่อไม่ให้หน้าจอกระพริบเป็น loading
+    // setState(() => _isSubItemsLoading = true);
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
     try {
       final allSubItems = await DBService.instance.readSubItemsForParent(
-        widget.itemId,
+        widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
       );
 
       final hierarchy = <int?, List<SubItemModel>>{};
@@ -132,14 +153,20 @@ class _DetailPageState extends State<DetailPage> {
       }
       _calculatedTotals = calculatedTotals;
 
+      // เมื่อข้อมูลพร้อมแล้ว ให้ setState เพื่อวาด UI ใหม่
+      // UI จะเปลี่ยนจาก empty state หรือ state เดิม เป็น state ใหม่ทันที
       setState(() {
         _subItemsTree = topLevelItems;
       });
     } catch (e) {
       print('Error loading and structuring sub-items: $e');
-    } finally {
-      setState(() => _isSubItemsLoading = false);
     }
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // ลบ finally block และการตั้งค่า isSubItemsLoading
+    // finally {
+    //   setState(() => _isSubItemsLoading = false);
+    // }
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   Map<String, dynamic> _calculateRecursiveTotals(
@@ -187,7 +214,7 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _updateSubItemOrder(int? childOf) async {
     final allSubItems = await DBService.instance.readSubItemsForParent(
-      widget.itemId,
+      widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
     );
     final siblings = allSubItems
         .where((item) => item.childOf == childOf)
@@ -195,7 +222,7 @@ class _DetailPageState extends State<DetailPage> {
     siblings.sort((a, b) => a.id!.compareTo(b.id!));
 
     final List<SubItemModel> itemsToUpdate = [];
-    final item = await _itemDetailFuture;
+    final item = widget.item; // ใช้ item จาก widget ได้เลย
     final parentPrefix =
         _hierarchy[childOf]?.first.title.split('.').first ??
         item.title.split('. ').first;
@@ -238,51 +265,16 @@ class _DetailPageState extends State<DetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<ItemModel>(
-      future: _itemDetailFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingScreen();
-        } else if (snapshot.hasError) {
-          return _buildErrorScreen(snapshot.error);
-        } else if (snapshot.hasData) {
-          final item = snapshot.data!;
-          return _buildDetailContent(context, item);
-        }
-        return const SizedBox.shrink();
-      },
-    );
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // ลบ FutureBuilder ออก และเรียก _buildDetailContent โดยตรง
+    // เพราะเรามีข้อมูล item พร้อมใช้งานแล้ว
+    return _buildDetailContent(context, widget.item);
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
-  Widget _buildLoadingScreen() {
-    return const Scaffold(
-      backgroundColor: AppColors.primary,
-      body: Center(child: CircularProgressIndicator(color: Colors.white)),
-    );
-  }
-
-  Widget _buildErrorScreen(Object? error) {
-    return Scaffold(
-      backgroundColor: AppColors.danger,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Text(
-            'ເກີດຂໍ້ຜິດພາດໃນການໂຫຼດຂໍ້ມູນ:\n$error',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 16),
-          ),
-        ),
-      ),
-    );
-  }
+  // ลบ _buildLoadingScreen และ _buildErrorScreen เพราะ FutureBuilder ถูกลบไปแล้ว
+  // Widget _buildLoadingScreen() { ... }
+  // Widget _buildErrorScreen(Object? error) { ... }
 
   Widget _buildDetailContent(BuildContext context, ItemModel item) {
     return Consumer<HomeViewModel>(
@@ -295,18 +287,18 @@ class _DetailPageState extends State<DetailPage> {
               : BoxDecoration(
                   image:
                       vm.settings.backgroundImagePath != null &&
-                              vm.settings.backgroundImagePath!.isNotEmpty
-                          ? DecorationImage(
-                              image: FileImage(
-                                File(vm.settings.backgroundImagePath!),
-                              ),
-                              fit: BoxFit.cover,
-                              colorFilter: ColorFilter.mode(
-                                Colors.black.withOpacity(0.3),
-                                BlendMode.darken,
-                              ),
-                            )
-                          : null,
+                          vm.settings.backgroundImagePath!.isNotEmpty
+                      ? DecorationImage(
+                          image: FileImage(
+                            File(vm.settings.backgroundImagePath!),
+                          ),
+                          fit: BoxFit.cover,
+                          colorFilter: ColorFilter.mode(
+                            Colors.black.withOpacity(0.3),
+                            BlendMode.darken,
+                          ),
+                        )
+                      : null,
                   gradient: headerGradient, // ใช้ Gradient เป็น Fallback
                 ),
           child: Scaffold(
@@ -381,7 +373,7 @@ class _DetailPageState extends State<DetailPage> {
                     ),
                     IconButton(
                       icon: Icon(
-                        Icons.share_outlined, 
+                        Icons.share_outlined,
                         color: _isScrolled
                             ? AppColors.primary
                             : AppColors.textOnPrimary,
@@ -474,11 +466,13 @@ class _DetailPageState extends State<DetailPage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
-                      child: _isSubItemsLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : _subItemsTree.isEmpty
-                              ? _buildEmptySubItems()
-                              : _buildSubItemTree(_subItemsTree, 0, item),
+                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                      // เปลี่ยนจากการเช็ค isSubItemsLoading เป็นการเช็คว่า tree ว่างหรือไม่
+                      // เพื่อแสดง UI ที่เหมาะสมโดยไม่มีหน้า loading มาคั่น
+                      child: _subItemsTree.isEmpty
+                          ? _buildEmptySubItems()
+                          : _buildSubItemTree(_subItemsTree, 0, item),
+                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     ),
                   ),
                 ),
@@ -695,7 +689,6 @@ class _DetailPageState extends State<DetailPage> {
               _buildAmountText(Currency.KIP, budget.amountKip, isVisible),
               _buildAmountText(Currency.THB, budget.amountThb, isVisible),
               _buildAmountText(Currency.USD, budget.amountUsd, isVisible),
-              
             ],
           ),
         ),
@@ -1001,7 +994,9 @@ class _DetailPageState extends State<DetailPage> {
                           ),
                         TextFormField(
                           controller: titleController,
-                          decoration: const InputDecoration(labelText: 'ຫົວຂໍ້'),
+                          decoration: const InputDecoration(
+                            labelText: 'ຫົວຂໍ້',
+                          ),
                           validator: (v) =>
                               v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້ກ່ອນ' : null,
                         ),
@@ -1026,8 +1021,8 @@ class _DetailPageState extends State<DetailPage> {
                                 ),
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
+                                      decimal: true,
+                                    ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -1044,8 +1039,9 @@ class _DetailPageState extends State<DetailPage> {
                                       ),
                                     )
                                     .toList(),
-                                onChanged: (newValue) =>
-                                    setStateDialog(() => selectedUnit = newValue),
+                                onChanged: (newValue) => setStateDialog(
+                                  () => selectedUnit = newValue,
+                                ),
                               ),
                             ),
                           ],
@@ -1130,9 +1126,12 @@ class _DetailPageState extends State<DetailPage> {
                           ],
                         ),
                         const Divider(height: 24),
-                    
+
                         // UI ใหม่สำหรับเลือกวันที่ (พร้อมคำแปลภาษาลาว)
-                        const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
+                        const Text(
+                          'ຕັ້ງຄ່າວັນທີ',
+                          style: AppTextStyles.bodyBold,
+                        ),
                         Column(
                           children: [
                             RadioListTile<DateSelectionOption>(
@@ -1202,13 +1201,15 @@ class _DetailPageState extends State<DetailPage> {
                                   icon: const Icon(Icons.calendar_today),
                                   label: const Text('ເລືອກວັນທີ'),
                                   onPressed: () async {
-                                    final DateTime? picked = await showDatePicker(
-                                      context: context,
-                                      locale: const Locale('lo'),
-                                      initialDate: selectedDate ?? DateTime.now(),
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2101),
-                                    );
+                                    final DateTime? picked =
+                                        await showDatePicker(
+                                          context: context,
+                                          locale: const Locale('lo'),
+                                          initialDate:
+                                              selectedDate ?? DateTime.now(),
+                                          firstDate: DateTime(2000),
+                                          lastDate: DateTime(2101),
+                                        );
                                     if (picked != null &&
                                         picked != selectedDate) {
                                       setStateDialog(() {
@@ -1445,7 +1446,6 @@ class _DetailPageState extends State<DetailPage> {
                   ),
                 ),
               ),
-              /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
               actions: [
                 if (isEditing)
                   TextButton(
@@ -1490,7 +1490,6 @@ class _DetailPageState extends State<DetailPage> {
                   child: const Text('ບັນທຶກ'),
                 ),
               ],
-              /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
             );
           },
         );
