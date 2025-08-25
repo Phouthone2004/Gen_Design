@@ -1,19 +1,21 @@
 import 'dart:async';
 import 'dart:io';
 
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:collection/collection.dart';
 import '../../data/item_model.dart';
 import '../../logic/home_vm.dart';
+import '../../services/pdf_exporter.dart';
 import '../core/app_styles.dart';
 import '../core/app_currencies.dart';
 import '../page/detail_page.dart';
+import '../page/pdf_preview_page.dart';
 import 'add_edit_item_dialog.dart';
 import 'settings_dialog.dart';
 
-// เปลี่ยนเป็น StatefulWidget เพื่อจัดการสถานะการ scroll
 class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
 
@@ -38,7 +40,6 @@ class _HomeContentState extends State<HomeContent> {
     super.dispose();
   }
 
-  // Listener ที่จะคอยเช็คว่า AppBar ถูกย่อจนสุดหรือยัง
   void _scrollListener() {
     final isCollapsed = _scrollController.hasClients &&
         _scrollController.offset > 250.0;
@@ -49,11 +50,54 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  Future<void> _showCombinedPdfPreview() async {
+    final vm = Provider.of<HomeViewModel>(context, listen: false);
+    final itemsToExport = vm.items.where((item) => item.isIncludedInTotals).toList();
+
+    if (itemsToExport.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ບໍ່ມີໂຄງການຮ່ວມໃຫ້ສົ່ງອອກ')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final pdfBytes = await PdfExporter.generateCombinedPdfBytes(itemsToExport, vm);
+      final String fileName = 'รายงานรวมโครงการ_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
+
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PdfPreviewPage(
+              pdfBytes: pdfBytes,
+              fileName: fileName,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ເກີດຂໍ້ຜິດພາດໃນການສ້າງ PDF: $e')),
+        );
+      }
+    }
+  }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+
   @override
   Widget build(BuildContext context) {
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // หุ้ม Scaffold ทั้งหมดด้วย GestureDetector
-    // เพื่อดักจับการแตะนอกพื้นที่ TextField และซ่อน Keyboard
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Consumer<HomeViewModel>(
@@ -67,7 +111,7 @@ class _HomeContentState extends State<HomeContent> {
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: CustomScrollView(
-              controller: _scrollController, // ผูก controller กับ scroll view
+              controller: _scrollController,
               slivers: <Widget>[
                 SliverAppBar(
                   backgroundColor: AppColors.primaryDark,
@@ -76,6 +120,12 @@ class _HomeContentState extends State<HomeContent> {
                   pinned: true,
                   collapsedHeight: 80.0,
                   actions: [
+                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                    IconButton(
+                      icon: const Icon(Icons.share_outlined, color: AppColors.textOnPrimary),
+                      onPressed: _showCombinedPdfPreview,
+                    ),
+                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     IconButton(
                       icon: Icon(
                         vm.areAmountsVisible ? Icons.visibility : Icons.visibility_off,
@@ -88,7 +138,6 @@ class _HomeContentState extends State<HomeContent> {
                       onPressed: () => showSettingsDialog(context, vm),
                     ),
                   ],
-                  // Title for collapsed state: จะแสดงผลก็ต่อเมื่อ _isAppBarCollapsed เป็น true
                   title: AnimatedOpacity(
                     opacity: _isAppBarCollapsed ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 300),
@@ -143,7 +192,6 @@ class _HomeContentState extends State<HomeContent> {
         },
       ),
     );
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   Widget _buildCollapsedHeader(HomeViewModel vm) {
@@ -189,10 +237,8 @@ class _HomeContentState extends State<HomeContent> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Top part: Logo and financial info
         _buildHeaderContent(vm),
         const SizedBox(height: 5,),
-        // Bottom part: Search and filter
         Row(
           children: [
             Expanded(
@@ -228,7 +274,6 @@ class _HomeContentState extends State<HomeContent> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // --- Top Row: Logo and Titles ---
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -263,7 +308,6 @@ class _HomeContentState extends State<HomeContent> {
           ],
         ),
         const SizedBox(height: 16),
-        // --- Middle Row: Total Budget ---
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -282,11 +326,10 @@ class _HomeContentState extends State<HomeContent> {
           ],
         ),
         const SizedBox(height: 12),
-        // --- Bottom Row: Remaining Balance ---
         Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            Expanded( // Wrap with Expanded to prevent overflow
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -474,21 +517,16 @@ class _HomeContentState extends State<HomeContent> {
     return Card(
       key: ValueKey(item.id),
       elevation: 1.5,
-      color: Colors.white,
+      color: item.isIncludedInTotals ? Colors.white : Colors.grey.shade200,
       margin: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () async {
-          /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-          // แก้ไขการส่งข้อมูลไปยัง DetailPage
-          // จากเดิมส่งแค่ itemId เป็นการส่ง item object ทั้งก้อนไปเลย
-          // เพื่อลดการโหลดข้อมูลซ้ำและแก้ปัญหาหน้า Loading
           await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => DetailPage(item: item)),
           );
-          /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
           Provider.of<HomeViewModel>(context, listen: false).loadItems();
         },
         child: Padding(
@@ -643,6 +681,17 @@ class _HomeContentState extends State<HomeContent> {
       position: position,
       items: [
         const PopupMenuItem<String>(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('ແກ້ໄຂ'))),
+        PopupMenuItem<String>(
+          value: 'toggle_inclusion',
+          child: ListTile(
+            leading: Icon(
+              item.isIncludedInTotals ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+            ),
+            title: Text(
+              item.isIncludedInTotals ? 'ເຮັດເປັນໂຄງການດ່ຽວ' : 'ເຮັດເປັນໂຄງການຮ່ວມ',
+            ),
+          ),
+        ),
         const PopupMenuItem<String>(value: 'delete', child: ListTile(leading: Icon(Icons.delete), title: Text('ລົບ'))),
       ],
     ).then((value) {
@@ -650,6 +699,8 @@ class _HomeContentState extends State<HomeContent> {
         showAddItemDialog(buttonContext, vm, existingItem: item);
       } else if (value == 'delete') {
         _showDeleteConfirmation(buttonContext, item, vm);
+      } else if (value == 'toggle_inclusion') {
+        vm.toggleItemInclusion(item.id!);
       }
     });
   }
@@ -763,11 +814,11 @@ class _AnimatedProgressBarState extends State<AnimatedProgressBar> with SingleTi
 
     Color progressBarColor;
     if (percentage > 1.0) {
-      progressBarColor = Colors.red.shade400; // มากกว่า 100%
+      progressBarColor = Colors.red.shade400;
     } else if (percentage >= 0.8) {
-      progressBarColor = Colors.yellow.shade700; // มากกว่าหรือเท่ากับ 80%
+      progressBarColor = Colors.yellow.shade700;
     } else {
-      progressBarColor = Colors.green.shade400; // น้อยกว่า 80%
+      progressBarColor = Colors.green.shade400;
     }
 
     return RotationTransition(

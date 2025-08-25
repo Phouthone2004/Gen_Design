@@ -73,12 +73,12 @@ class HomeViewModel extends ChangeNotifier {
     double totalQuantity = item.quantity ?? 0;
     final totalCosts = { for (var c in Currency.values) c.code : 0.0 };
 
-    if (item.laborCost != null && item.laborCost! > 0 && item.laborCostCurrency != null) {
-      totalCosts[item.laborCostCurrency!] = (totalCosts[item.laborCostCurrency!] ?? 0) + item.laborCost!;
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // เปลี่ยนมาวนลูปอ่านค่าใช้จ่ายจาก List<CostModel> แทน
+    for (final cost in item.costs) {
+      totalCosts[cost.currency] = (totalCosts[cost.currency] ?? 0) + cost.amount;
     }
-    if (item.materialCost != null && item.materialCost! > 0 && item.materialCostCurrency != null) {
-      totalCosts[item.materialCostCurrency!] = (totalCosts[item.materialCostCurrency!] ?? 0) + item.materialCost!;
-    }
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
     final children = hierarchy[item.id] ?? [];
     for (final child in children) {
@@ -127,7 +127,9 @@ class HomeViewModel extends ChangeNotifier {
     availableYears = years.toList();
     availableYears.sort((a, b) => b.compareTo(a));
 
-    for (var item in _allItems) {
+    final itemsToInclude = _allItems.where((item) => item.isIncludedInTotals).toList();
+
+    for (var item in itemsToInclude) {
       grandTotalBudget[Currency.KIP.code] = (grandTotalBudget[Currency.KIP.code] ?? 0) + item.amount;
       grandTotalBudget[Currency.THB.code] = (grandTotalBudget[Currency.THB.code] ?? 0) + item.amountThb;
       grandTotalBudget[Currency.USD.code] = (grandTotalBudget[Currency.USD.code] ?? 0) + item.amountUsd;
@@ -162,10 +164,13 @@ class HomeViewModel extends ChangeNotifier {
 
     subItemsTotalCosts = newSubItemsTotalCosts;
 
-    subItemsTotalCosts.values.forEach((costMap) {
-      grandTotalCost.forEach((currencyCode, total) {
-        grandTotalCost[currencyCode] = total + (costMap[currencyCode] ?? 0);
-      });
+    subItemsTotalCosts.forEach((projectId, costMap) {
+      final currentItem = _allItems.firstWhereOrNull((item) => item.id == projectId);
+      if (currentItem != null && currentItem.isIncludedInTotals) {
+        grandTotalCost.forEach((currencyCode, total) {
+          grandTotalCost[currencyCode] = total + (costMap[currencyCode] ?? 0);
+        });
+      }
     });
   
     grandTotalBudget.forEach((currency, budget) {
@@ -312,11 +317,8 @@ class HomeViewModel extends ChangeNotifier {
     );
     await DBService.instance.update(updatedItem);
     
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // Logic แก้ไขบั๊ก: อัปเดตงบประมาณงวดที่ 1 ตามงบใหม่
     final budgets = await DBService.instance.readQuarterlyBudgetsForParent(item.id!);
     if (budgets.isNotEmpty) {
-      // ใช้ firstWhereOrNull จาก package:collection เพื่อความปลอดภัย
       final firstQuarter = budgets.firstWhereOrNull((b) => b.quarterNumber == 1);
       if (firstQuarter != null) {
         final updatedQuarter = firstQuarter.copyWith(
@@ -327,7 +329,6 @@ class HomeViewModel extends ChangeNotifier {
         await DBService.instance.updateQuarterlyBudget(updatedQuarter);
       }
     }
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
     await loadItems();
   }
@@ -336,5 +337,16 @@ class HomeViewModel extends ChangeNotifier {
     await DBService.instance.delete(id);
     await _updateAlphabeticalOrder();
     await loadItems();
+  }
+  
+  Future<void> toggleItemInclusion(int itemId) async {
+    final itemToUpdate = _allItems.firstWhereOrNull((item) => item.id == itemId);
+    if (itemToUpdate != null) {
+      final updatedItem = itemToUpdate.copyWith(
+        isIncludedInTotals: !itemToUpdate.isIncludedInTotals,
+      );
+      await DBService.instance.update(updatedItem);
+      await loadItems();
+    }
   }
 }

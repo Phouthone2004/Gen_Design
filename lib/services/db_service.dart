@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import '../data/cost_model.dart';
 import '../data/item_model.dart';
 import '../data/sub_item_model.dart';
 import '../data/quarterly_budget_model.dart';
+import '../presentation/core/app_currencies.dart';
 
 class DBService {
   static final DBService instance = DBService._init();
@@ -20,7 +23,9 @@ class DBService {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 13,
+      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+      version: 17, // เพิ่มเวอร์ชัน DB เป็น 17
+      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
       onConfigure: _onConfigure,
@@ -49,10 +54,11 @@ class DBService {
         selectedDate $dateType,
         lastActivityTimestamp $integerType,
         creationTimestamp $integerType,
-        sortOrder $integerType
+        sortOrder $integerType,
+        isIncludedInTotals INTEGER NOT NULL DEFAULT 1
       )
     ''');
-  
+
     await db.execute('''
       CREATE TABLE sub_items (
         id $idType,
@@ -62,11 +68,11 @@ class DBService {
         description TEXT,
         quantity REAL,
         unit TEXT,
-        laborCost REAL,
-        laborCostCurrency TEXT,
-        materialCost REAL,
-        materialCostCurrency TEXT,
         selectedDate $dateType,
+        costs TEXT,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        sortOrder INTEGER NOT NULL,
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
         FOREIGN KEY (parentId) REFERENCES items(id) ON DELETE CASCADE
       )
     ''');
@@ -79,7 +85,8 @@ class DBService {
         amountKip REAL NOT NULL,
         amountThb REAL NOT NULL,
         amountUsd REAL NOT NULL,
-        selectedDate TEXT
+        selectedDate TEXT,
+        notes TEXT
       )
     ''');
   }
@@ -91,6 +98,69 @@ class DBService {
     if (oldVersion < 13) {
       await db.execute("ALTER TABLE sub_items ADD COLUMN childOf INTEGER");
     }
+    if (oldVersion < 14) {
+      await db.execute("ALTER TABLE items ADD COLUMN isIncludedInTotals INTEGER NOT NULL DEFAULT 1");
+    }
+    if (oldVersion < 15) {
+      await db.execute("ALTER TABLE quarterly_budgets ADD COLUMN notes TEXT");
+    }
+    if (oldVersion < 16) {
+      await db.execute('CREATE TABLE sub_items_new ('
+          'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+          'parentId INTEGER NOT NULL, '
+          'childOf INTEGER, '
+          'title TEXT NOT NULL, '
+          'description TEXT, '
+          'quantity REAL, '
+          'unit TEXT, '
+          'selectedDate TEXT, '
+          'costs TEXT, '
+          'FOREIGN KEY (parentId) REFERENCES items(id) ON DELETE CASCADE)');
+
+      final List<Map<String, dynamic>> oldData = await db.query('sub_items');
+      final batch = db.batch();
+
+      for (final row in oldData) {
+        final List<CostModel> costs = [];
+        if (row['laborCost'] != null && (row['laborCost'] as double) > 0) {
+          costs.add(CostModel(
+            description: 'ຄ່າແຮງ',
+            amount: row['laborCost'] as double,
+            currency: row['laborCostCurrency'] as String? ?? Currency.KIP.code,
+          ));
+        }
+        if (row['materialCost'] != null && (row['materialCost'] as double) > 0) {
+          costs.add(CostModel(
+            description: 'ຄ່າວັດສະດຸ',
+            amount: row['materialCost'] as double,
+            currency: row['materialCostCurrency'] as String? ?? Currency.KIP.code,
+          ));
+        }
+
+        batch.insert('sub_items_new', {
+          'id': row['id'],
+          'parentId': row['parentId'],
+          'childOf': row['childOf'],
+          'title': row['title'],
+          'description': row['description'],
+          'quantity': row['quantity'],
+          'unit': row['unit'],
+          'selectedDate': row['selectedDate'],
+          'costs': json.encode(costs.map((c) => c.toMap()).toList()),
+        });
+      }
+      await batch.commit(noResult: true);
+
+      await db.execute('DROP TABLE sub_items');
+      await db.execute('ALTER TABLE sub_items_new RENAME TO sub_items');
+    }
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    if (oldVersion < 17) {
+      await db.execute("ALTER TABLE sub_items ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0");
+      // สำหรับข้อมูลเก่า ให้ใช้ id เป็นค่า sortOrder เริ่มต้นไปก่อน
+      await db.execute("UPDATE sub_items SET sortOrder = id");
+    }
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   // --- CRUD for Items ---
@@ -110,7 +180,7 @@ class DBService {
     final db = await instance.database;
     return db.update('items', item.toMap(), where: 'id = ?', whereArgs: [item.id]);
   }
-  
+
   Future<void> updateItems(List<ItemModel> items) async {
     final db = await instance.database;
     final batch = db.batch();
@@ -145,7 +215,9 @@ class DBService {
   Future<List<SubItemModel>> readSubItemsForParent(int parentId) async {
     final db = await instance.database;
     final result = await db.query('sub_items',
-        where: 'parentId = ?', whereArgs: [parentId], orderBy: 'id ASC');
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        where: 'parentId = ?', whereArgs: [parentId], orderBy: 'sortOrder ASC'); // เปลี่ยนมาเรียงตาม sortOrder
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
     return result.map((json) => SubItemModel.fromMap(json)).toList();
   }
 
@@ -160,7 +232,6 @@ class DBService {
     return db.update('sub_items', subItem.toMap(), where: 'id = ?', whereArgs: [subItem.id]);
   }
 
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
   Future<void> updateSubItems(List<SubItemModel> subItems) async {
     final db = await instance.database;
     final batch = db.batch();
@@ -169,7 +240,6 @@ class DBService {
     }
     await batch.commit(noResult: true);
   }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   Future<int> deleteSubItem(int id) async {
     final db = await instance.database;

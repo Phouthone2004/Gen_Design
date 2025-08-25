@@ -11,6 +11,9 @@ class ItemModel {
   final int? lastActivityTimestamp;
   final int sortOrder;
   final int? creationTimestamp;
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  final bool isIncludedInTotals; // true = โครงการร่วม, false = โครงการเดี่ยว
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   ItemModel({
     this.id,
@@ -23,6 +26,9 @@ class ItemModel {
     this.lastActivityTimestamp,
     required this.sortOrder,
     this.creationTimestamp,
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    this.isIncludedInTotals = true, // กำหนดค่าเริ่มต้นเป็น true
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   });
 
   ItemModel copyWith({
@@ -36,6 +42,9 @@ class ItemModel {
     int? lastActivityTimestamp,
     int? sortOrder,
     int? creationTimestamp,
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    bool? isIncludedInTotals,
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }) =>
       ItemModel(
         id: id ?? this.id,
@@ -48,6 +57,9 @@ class ItemModel {
         lastActivityTimestamp: lastActivityTimestamp ?? this.lastActivityTimestamp,
         sortOrder: sortOrder ?? this.sortOrder,
         creationTimestamp: creationTimestamp ?? this.creationTimestamp,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        isIncludedInTotals: isIncludedInTotals ?? this.isIncludedInTotals,
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       );
 
   Map<String, Object?> toMap() => {
@@ -61,6 +73,9 @@ class ItemModel {
         'lastActivityTimestamp': lastActivityTimestamp,
         'sortOrder': sortOrder,
         'creationTimestamp': creationTimestamp,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        'isIncludedInTotals': isIncludedInTotals ? 1 : 0, // แปลง boolean เป็น integer
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       };
 
   static ItemModel fromMap(Map<String, Object?> json) => ItemModel(
@@ -76,5 +91,9 @@ class ItemModel {
         lastActivityTimestamp: json['lastActivityTimestamp'] as int?,
         sortOrder: json['sortOrder'] as int,
         creationTimestamp: json['creationTimestamp'] as int?,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        // แปลง integer กลับเป็น boolean (ถ้าไม่มีข้อมูล ให้ถือว่าเป็น true)
+        isIncludedInTotals: json['isIncludedInTotals'] == null ? true : json['isIncludedInTotals'] == 1,
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       );
 }

@@ -6,10 +6,7 @@ import '../../logic/home_vm.dart';
 import '../core/app_currencies.dart';
 import '../core/app_styles.dart';
 
-/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-// enum สำหรับจัดการตัวเลือกวันที่
 enum DateSelectionOption { none, today, manual }
-/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
 Future<void> showAddItemDialog(
   BuildContext context,
@@ -17,7 +14,7 @@ Future<void> showAddItemDialog(
   ItemModel? existingItem,
 }) async {
   final formKey = GlobalKey<FormState>();
- 
+
   String _getOriginalTitle(String? fullTitle) {
     if (fullTitle == null) return '';
     int dotIndex = fullTitle.indexOf('. ');
@@ -29,7 +26,7 @@ Future<void> showAddItemDialog(
 
   final titleController = TextEditingController(text: _getOriginalTitle(existingItem?.title));
   final descriptionController = TextEditingController(text: existingItem?.description);
- 
+
   final amountKipController = TextEditingController(
     text: existingItem != null && existingItem.amount > 0
         ? NumberFormat("#,##0").format(existingItem.amount)
@@ -47,13 +44,10 @@ Future<void> showAddItemDialog(
   );
 
   DateTime? selectedDate = existingItem?.selectedDate;
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // กำหนดค่าเริ่มต้นของตัวเลือกวันที่
   DateSelectionOption dateSelectionOption = DateSelectionOption.none;
   if (selectedDate != null) {
     dateSelectionOption = DateSelectionOption.manual;
   }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   return showDialog(
     context: context,
@@ -102,9 +96,6 @@ Future<void> showAddItemDialog(
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
                       ),
                       const Divider(height: 24),
-                      
-                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                      // UI ใหม่สำหรับเลือกวันที่
                       const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
                       Column(
                         children: [
@@ -139,8 +130,6 @@ Future<void> showAddItemDialog(
                             onChanged: (value) {
                               setState(() {
                                 dateSelectionOption = value!;
-                                // ถ้าเคยเลือกวันที่ไว้แล้ว ให้ใช้ค่าเดิม
-                                // ถ้ายังไม่เคย ให้เป็น null รอผู้ใช้กดปุ่ม
                                 if (existingItem?.selectedDate == null) {
                                   selectedDate = null;
                                 }
@@ -150,8 +139,6 @@ Future<void> showAddItemDialog(
                           ),
                         ],
                       ),
-                  
-                      // แสดงผลลัพธ์และปุ่มตามตัวเลือก
                       if (dateSelectionOption == DateSelectionOption.today && selectedDate != null)
                         Padding(
                           padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
@@ -160,14 +147,13 @@ Future<void> showAddItemDialog(
                             style: AppTextStyles.body.copyWith(color: AppColors.primary),
                           ),
                         ),
-                      
                       if (dateSelectionOption == DateSelectionOption.manual)
                         Padding(
                           padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                               ElevatedButton.icon(
+                              ElevatedButton.icon(
                                 icon: const Icon(Icons.calendar_today),
                                 label: const Text('ເລືອກວັນທີ'),
                                 onPressed: () async {
@@ -195,7 +181,6 @@ Future<void> showAddItemDialog(
                             ],
                           ),
                         ),
-                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     ],
                   ),
                 ),
@@ -256,15 +241,63 @@ Future<void> showAddItemDialog(
   );
 }
 
+/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข (ทั้งคลาส) ▼ ------------------ */
+// แก้ไข Logic ของ Formatter ใหม่ทั้งหมดเพื่อแก้ปัญหาเคอร์เซอร์ดีด
 class CurrencyInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.selection.baseOffset == 0) return newValue;
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    // ถ้าผู้ใช้ลบหมด ให้ return ค่าว่าง
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // แปลงค่าใหม่เป็นตัวเลขดิบ (ไม่มี comma)
     final String newText = newValue.text.replaceAll(',', '');
-    if (newText.isEmpty) return newValue.copyWith(text: '');
-    final double value = double.parse(newText);
+
+    // ถ้าค่าใหม่ไม่ใช่ตัวเลข หรือเป็นค่าว่างหลังจากลบ comma ให้ใช้ค่าเก่า
+    if (newText.isEmpty || int.tryParse(newText) == null) {
+      return oldValue;
+    }
+
+    // จัดรูปแบบตัวเลขใหม่
     final formatter = NumberFormat("#,##0", "en_US");
-    final String formattedText = formatter.format(value);
-    return newValue.copyWith(text: formattedText, selection: TextSelection.collapsed(offset: formattedText.length));
+    final String newFormattedText = formatter.format(int.parse(newText));
+
+    // --- ส่วนคำนวณตำแหน่งเคอร์เซอร์ใหม่ ---
+    int selectionIndex = newValue.selection.end;
+    
+    // นับจำนวนตัวเลข (digits) ก่อนถึงตำแหน่งเคอร์เซอร์ในค่าใหม่ที่ผู้ใช้พิมพ์
+    int numDigitsBeforeCursor = 0;
+    for (int i = 0; i < selectionIndex; i++) {
+      if (newValue.text[i] != ',') {
+        numDigitsBeforeCursor++;
+      }
+    }
+
+    // หาตำแหน่งเคอร์เซอร์ใหม่ในข้อความที่จัดรูปแบบแล้ว
+    // โดยการวนลูปไปเรื่อยๆ จนกว่าจะเจอจำนวนตัวเลขที่เท่ากับที่เรานับไว้
+    int newCursorPosition = 0;
+    int digitCount = 0;
+    while (newCursorPosition < newFormattedText.length && digitCount < numDigitsBeforeCursor) {
+      if (newFormattedText[newCursorPosition] != ',') {
+        digitCount++;
+      }
+      newCursorPosition++;
+    }
+    
+    // กรณีพิเศษ: ถ้าเคอร์เซอร์อยู่ท้ายสุด ให้ย้ายไปท้ายสุดของข้อความใหม่ด้วย
+    if (numDigitsBeforeCursor == newText.length) {
+      newCursorPosition = newFormattedText.length;
+    }
+
+    return TextEditingValue(
+      text: newFormattedText,
+      selection: TextSelection.collapsed(
+        // clamp() เพื่อป้องกันไม่ให้ index เกินขอบเขต
+        offset: newCursorPosition.clamp(0, newFormattedText.length),
+      ),
+    );
   }
 }
+/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */

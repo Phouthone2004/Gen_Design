@@ -8,6 +8,9 @@ class QuarterlyBudgetModel {
   final double amountThb;
   final double amountUsd;
   final DateTime? selectedDate;
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  final String? notes; // เพิ่ม field สำหรับหมายเหตุ
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   QuarterlyBudgetModel({
     this.id,
@@ -17,6 +20,9 @@ class QuarterlyBudgetModel {
     required this.amountThb,
     required this.amountUsd,
     this.selectedDate,
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    this.notes,
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   });
 
   QuarterlyBudgetModel copyWith({
@@ -27,6 +33,9 @@ class QuarterlyBudgetModel {
     double? amountThb,
     double? amountUsd,
     DateTime? selectedDate,
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    String? notes,
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }) {
     return QuarterlyBudgetModel(
       id: id ?? this.id,
@@ -36,6 +45,9 @@ class QuarterlyBudgetModel {
       amountThb: amountThb ?? this.amountThb,
       amountUsd: amountUsd ?? this.amountUsd,
       selectedDate: selectedDate ?? this.selectedDate,
+      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+      notes: notes ?? this.notes,
+      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
     );
   }
 
@@ -47,6 +59,9 @@ class QuarterlyBudgetModel {
         'amountThb': amountThb,
         'amountUsd': amountUsd,
         'selectedDate': selectedDate?.toIso8601String(),
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        'notes': notes,
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       };
 
   static QuarterlyBudgetModel fromMap(Map<String, Object?> json) =>
@@ -60,5 +75,8 @@ class QuarterlyBudgetModel {
         selectedDate: json['selectedDate'] != null
             ? DateTime.parse(json['selectedDate'] as String)
             : null,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        notes: json['notes'] as String?,
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       );
 }

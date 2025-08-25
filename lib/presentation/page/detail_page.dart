@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:gen_design/data/cost_model.dart';
 import 'package:gen_design/presentation/widget/add_edit_item_dialog.dart';
 import 'package:gen_design/presentation/widget/home_content.dart';
 import 'package:intl/intl.dart';
@@ -14,34 +16,21 @@ import '../../logic/home_vm.dart';
 import '../../services/db_service.dart';
 import '../core/app_styles.dart';
 import '../core/app_currencies.dart';
+import 'pdf_preview_page.dart';
 import '../../services/pdf_exporter.dart';
-
-/* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-// ลบฟังก์ชันนี้ออกไป เพราะเราจะไม่ใช้ compute แล้ว
-// ItemModel _processItemData(Map<String, Object?> itemMap) {
-//   return ItemModel.fromMap(itemMap);
-// }
-/* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
 // enum สำหรับจัดการตัวเลือกวันที่ในหน้านี้
 enum DateSelectionOption { none, today, manual }
 
 class DetailPage extends StatefulWidget {
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // เปลี่ยนจากการรับ itemId เป็นรับ ItemModel ทั้ง object
   final ItemModel item;
   const DetailPage({super.key, required this.item});
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   @override
   State<DetailPage> createState() => _DetailPageState();
 }
 
 class _DetailPageState extends State<DetailPage> {
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // ลบ FutureBuilder และตัวแปรที่เกี่ยวข้องออก
-  // late Future<ItemModel> _itemDetailFuture;
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   final ScrollController _scrollController = ScrollController();
   late PageController _pageController;
   bool _isScrolled = false;
@@ -49,10 +38,6 @@ class _DetailPageState extends State<DetailPage> {
   List<SubItemModel> _subItemsTree = [];
   Map<int?, List<SubItemModel>> _hierarchy = {};
   Map<int, Map<String, dynamic>> _calculatedTotals = {};
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // ลบสถานะ loading ของ sub-items ออก เพื่อไม่ให้หน้าจอกระพริบ
-  // bool _isSubItemsLoading = true;
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   List<QuarterlyBudgetModel> _quarterlyBudgets = [];
   bool _isBudgetsLoading = true;
@@ -86,23 +71,19 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   Future<void> _loadAllData() async {
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // ไม่ต้องโหลด item หลักซ้ำแล้ว เพราะได้ข้อมูลมาจากหน้า Home
-    // final item = await (_itemDetailFuture = _loadItemDetails());
     await _loadAndStructureSubItems();
-    await _loadQuarterlyBudgets(widget.item); // ใช้ widget.item แทน
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+    await _loadQuarterlyBudgets(widget.item);
   }
 
   Future<void> _loadQuarterlyBudgets(ItemModel item) async {
     setState(() => _isBudgetsLoading = true);
     var budgets = await DBService.instance.readQuarterlyBudgetsForParent(
-      widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
+      widget.item.id!,
     );
 
     if (budgets.isEmpty) {
       final firstQuarter = QuarterlyBudgetModel(
-        parentId: widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
+        parentId: widget.item.id!,
         quarterNumber: 1,
         amountKip: item.amount,
         amountThb: item.amountThb,
@@ -122,28 +103,22 @@ class _DetailPageState extends State<DetailPage> {
     });
   }
 
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // ลบฟังก์ชัน _loadItemDetails เพราะไม่จำเป็นต้องโหลดข้อมูลซ้ำ
-  // Future<ItemModel> _loadItemDetails() async {
-  //   final itemMap = await DBService.instance.readItemAsMap(widget.itemId);
-  //   return await compute(_processItemData, itemMap);
-  // }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
-
   Future<void> _loadAndStructureSubItems() async {
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // ลบการตั้งค่า isSubItemsLoading เพื่อไม่ให้หน้าจอกระพริบเป็น loading
-    // setState(() => _isSubItemsLoading = true);
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
     try {
       final allSubItems = await DBService.instance.readSubItemsForParent(
-        widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
+        widget.item.id!,
       );
 
       final hierarchy = <int?, List<SubItemModel>>{};
       for (final subItem in allSubItems) {
         hierarchy.putIfAbsent(subItem.childOf, () => []).add(subItem);
       }
+      
+      // จัดเรียงทุกระดับชั้นด้วย sortOrder
+      hierarchy.forEach((key, value) {
+        value.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      });
+
       _hierarchy = hierarchy;
 
       final calculatedTotals = <int, Map<String, dynamic>>{};
@@ -153,20 +128,12 @@ class _DetailPageState extends State<DetailPage> {
       }
       _calculatedTotals = calculatedTotals;
 
-      // เมื่อข้อมูลพร้อมแล้ว ให้ setState เพื่อวาด UI ใหม่
-      // UI จะเปลี่ยนจาก empty state หรือ state เดิม เป็น state ใหม่ทันที
       setState(() {
         _subItemsTree = topLevelItems;
       });
     } catch (e) {
       print('Error loading and structuring sub-items: $e');
     }
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // ลบ finally block และการตั้งค่า isSubItemsLoading
-    // finally {
-    //   setState(() => _isSubItemsLoading = false);
-    // }
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   Map<String, dynamic> _calculateRecursiveTotals(
@@ -181,17 +148,8 @@ class _DetailPageState extends State<DetailPage> {
     double totalQuantity = item.quantity ?? 0;
     final totalCosts = {for (var c in Currency.values) c.code: 0.0};
 
-    if (item.laborCost != null &&
-        item.laborCost! > 0 &&
-        item.laborCostCurrency != null) {
-      totalCosts[item.laborCostCurrency!] =
-          (totalCosts[item.laborCostCurrency!] ?? 0) + item.laborCost!;
-    }
-    if (item.materialCost != null &&
-        item.materialCost! > 0 &&
-        item.materialCostCurrency != null) {
-      totalCosts[item.materialCostCurrency!] =
-          (totalCosts[item.materialCostCurrency!] ?? 0) + item.materialCost!;
+    for (final cost in item.costs) {
+      totalCosts[cost.currency] = (totalCosts[cost.currency] ?? 0) + cost.amount;
     }
 
     final children = hierarchy[item.id] ?? [];
@@ -211,70 +169,191 @@ class _DetailPageState extends State<DetailPage> {
     calculatedTotals[item.id!] = result;
     return result;
   }
+  
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // ฟังก์ชันนี้จะมาแทนที่ _renameSiblingItems และ _cascadeRenameChildren ทั้งหมด
+  // โดยจะทำการอัปเดตชื่อของไอเท็มและลูกๆ ทั้งหมดในระดับเดียวกันให้ถูกต้อง
+  Future<void> _updateAllTitlesAfterReorder(int? parentId) async {
+    final db = DBService.instance;
+    // ดึงไอเท็มทั้งหมดในโปรเจกต์นี้มา เพื่อให้มีข้อมูลล่าสุดสำหรับการคำนวณ
+    final allProjectItems = await db.readSubItemsForParent(widget.item.id!);
 
-  Future<void> _updateSubItemOrder(int? childOf) async {
-    final allSubItems = await DBService.instance.readSubItemsForParent(
-      widget.item.id!, // เปลี่ยนมาใช้ widget.item.id
-    );
-    final siblings = allSubItems
-        .where((item) => item.childOf == childOf)
-        .toList();
-    siblings.sort((a, b) => a.id!.compareTo(b.id!));
+    // Queue หรือ "คิว" สำหรับเก็บ ID ของไอเท็มแม่ที่ต้องประมวลผลลูกๆ ของมัน
+    // เราจะเริ่มจาก parentId ที่ได้รับมา (ถ้าเป็น null คือระดับบนสุด)
+    final processingQueue = <int?>[parentId];
+    final processedIds = <int?>{}; // Set สำหรับเก็บ ID ที่ประมวลผลไปแล้ว ป้องกันการทำงานซ้ำซ้อน
 
-    final List<SubItemModel> itemsToUpdate = [];
-    final item = widget.item; // ใช้ item จาก widget ได้เลย
-    final parentPrefix =
-        _hierarchy[childOf]?.first.title.split('.').first ??
-        item.title.split('. ').first;
+    while (processingQueue.isNotEmpty) {
+      final currentParentId = processingQueue.removeAt(0);
 
-    for (int i = 0; i < siblings.length; i++) {
-      final subItem = siblings[i];
-      final newIndex = i + 1;
+      if (processedIds.contains(currentParentId)) continue;
+      processedIds.add(currentParentId);
 
-      String currentPrefix;
-      String currentDescription;
+      // ค้นหาไอเท็มแม่จากในลิสต์ เพื่อเอา Prefix (เช่น "A.1") มาใช้
+      final parentItem = currentParentId == null
+          ? null
+          : allProjectItems.firstWhereOrNull((item) => item.id == currentParentId);
 
-      int firstSpaceIndex = subItem.title.indexOf(' ');
-      if (firstSpaceIndex != -1) {
-        currentPrefix = subItem.title.substring(0, firstSpaceIndex);
-        currentDescription = subItem.title.substring(firstSpaceIndex + 1);
-      } else {
-        currentPrefix = subItem.title;
-        currentDescription = '';
+      // กำหนด Prefix สำหรับลูกๆ ในระดับนี้
+      final parentPrefix = currentParentId == null
+          ? widget.item.title.split('. ').first // ถ้าเป็นระดับบนสุด ให้ใช้ Prefix ของโปรเจกต์หลัก
+          : parentItem!.title.split(' ').first; // ถ้าไม่ใช่ ให้ใช้ Prefix ของแม่มัน
+
+      // ค้นหาลูกๆ ทั้งหมดของแม่ตัวนี้
+      final siblings = allProjectItems.where((item) => item.childOf == currentParentId).toList();
+      if (siblings.isEmpty) continue;
+
+      // เรียงลำดับลูกๆ ตาม sortOrder ที่ถูกต้อง
+      siblings.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+      final List<SubItemModel> itemsToUpdate = [];
+
+      // วนลูปเพื่อสร้างชื่อใหม่ให้กับลูกๆ ทุกตัว
+      for (int i = 0; i < siblings.length; i++) {
+        final sibling = siblings[i];
+        final newIndex = i + 1;
+        final newPrefix = '$parentPrefix.$newIndex';
+        
+        // แยกเอาเฉพาะส่วนของ "คำอธิบาย" (ที่อยู่หลัง Prefix และเว้นวรรค) ออกมา
+        final descriptionPart = sibling.title.contains(' ')
+            ? sibling.title.substring(sibling.title.indexOf(' ') + 1)
+            : '';
+        
+        final newTitle = '$newPrefix $descriptionPart';
+
+        // ถ้าชื่อใหม่ไม่ตรงกับชื่อเก่า ก็เตรียมอัปเดต
+        if (sibling.title != newTitle) {
+          final updatedItem = sibling.copyWith(title: newTitle);
+          itemsToUpdate.add(updatedItem);
+
+          // อัปเดตข้อมูลในลิสต์ allProjectItems ใน memory ไปด้วยเลย
+          // เพื่อให้การทำงานในรอบถัดไป (สำหรับหลานๆ) ได้ Prefix ที่ถูกต้อง
+          final indexInAllItems = allProjectItems.indexWhere((item) => item.id == updatedItem.id);
+          if (indexInAllItems != -1) {
+            allProjectItems[indexInAllItems] = updatedItem;
+          }
+        }
+        
+        // เพิ่ม ID ของลูกตัวนี้เข้าไปในคิว เพื่อที่รอบหน้าจะได้เข้าไปอัปเดต "หลาน" ของมันต่อไป
+        processingQueue.add(sibling.id);
       }
 
-      String newPrefix;
-      if (childOf == null) {
-        newPrefix = '${parentPrefix}.$newIndex';
-      } else {
-        final parent = allSubItems.firstWhere((it) => it.id == childOf);
-        final parentTitlePrefix = parent.title.split(' ').first;
-        newPrefix = '$parentTitlePrefix.$newIndex';
+      // ถ้ามีรายการที่ต้องอัปเดตในระดับนี้ ก็สั่งอัปเดตลง DB
+      if (itemsToUpdate.isNotEmpty) {
+        await db.updateSubItems(itemsToUpdate);
       }
-
-      if (currentPrefix != newPrefix) {
-        final newTitle = '$newPrefix $currentDescription'.trim();
-        itemsToUpdate.add(subItem.copyWith(title: newTitle));
-      }
-    }
-
-    if (itemsToUpdate.isNotEmpty) {
-      await DBService.instance.updateSubItems(itemsToUpdate);
     }
   }
+
+  Future<void> _saveSubItemAndReorder({
+    required SubItemModel itemToSave,
+    int? oldSortOrder, 
+  }) async {
+    final db = DBService.instance;
+    final isEditing = itemToSave.id != null;
+    final newSortOrder = itemToSave.sortOrder;
+
+    List<SubItemModel> allItems = await db.readSubItemsForParent(widget.item.id!);
+    List<SubItemModel> siblings = allItems.where((i) => i.childOf == itemToSave.childOf).toList();
+
+    List<SubItemModel> itemsToUpdate = [];
+
+    if (isEditing) {
+      if (oldSortOrder != newSortOrder) {
+        // Remove the item being edited from siblings list to avoid re-shifting itself
+        final originalItem = siblings.firstWhereOrNull((i) => i.id == itemToSave.id);
+        if(originalItem != null) siblings.remove(originalItem);
+
+        if (newSortOrder < oldSortOrder!) {
+          // Moving item up
+          for (final sibling in siblings) {
+            if (sibling.sortOrder >= newSortOrder && sibling.sortOrder < oldSortOrder) {
+              itemsToUpdate.add(sibling.copyWith(sortOrder: sibling.sortOrder + 1));
+            }
+          }
+        } else { // Moving item down
+          for (final sibling in siblings) {
+            if (sibling.sortOrder > oldSortOrder && sibling.sortOrder <= newSortOrder) {
+              itemsToUpdate.add(sibling.copyWith(sortOrder: sibling.sortOrder - 1));
+            }
+          }
+        }
+      }
+    } else { // This is a new item
+      for (final sibling in siblings) {
+        if (sibling.sortOrder >= newSortOrder) {
+          itemsToUpdate.add(sibling.copyWith(sortOrder: sibling.sortOrder + 1));
+        }
+      }
+    }
+
+    // Commit sort order changes for other items
+    if (itemsToUpdate.isNotEmpty) {
+      await db.updateSubItems(itemsToUpdate);
+    }
+    
+    // Create or update the main item
+    if (isEditing) {
+      await db.updateSubItem(itemToSave);
+    } else {
+      await db.createSubItem(itemToSave);
+    }
+
+    // Call the new single function to fix all titles in the hierarchy
+    await _updateAllTitlesAfterReorder(itemToSave.childOf);
+    
+    // Reload data for the UI
+    await _loadAndStructureSubItems();
+    if (mounted) {
+      Provider.of<HomeViewModel>(context, listen: false).loadItems();
+    }
+  }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   @override
   Widget build(BuildContext context) {
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-    // ลบ FutureBuilder ออก และเรียก _buildDetailContent โดยตรง
-    // เพราะเรามีข้อมูล item พร้อมใช้งานแล้ว
     return _buildDetailContent(context, widget.item);
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
-  // ลบ _buildLoadingScreen และ _buildErrorScreen เพราะ FutureBuilder ถูกลบไปแล้ว
-  // Widget _buildLoadingScreen() { ... }
-  // Widget _buildErrorScreen(Object? error) { ... }
+  Future<void> _showPdfPreview(ItemModel item) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final pdfBytes = await PdfExporter.generatePdfBytes(
+        item,
+        _subItemsTree,
+        _hierarchy,
+        _calculatedTotals,
+      );
+      final String fileName = '${item.title.replaceAll(RegExp(r'[^\w\s]+'), '')}.pdf';
+
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PdfPreviewPage(
+              pdfBytes: pdfBytes,
+              fileName: fileName,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ເກີດຂໍ້ຜິດພາດໃນການສ້າງ PDF: $e')),
+        );
+      }
+    }
+  }
 
   Widget _buildDetailContent(BuildContext context, ItemModel item) {
     return Consumer<HomeViewModel>(
@@ -287,19 +366,19 @@ class _DetailPageState extends State<DetailPage> {
               : BoxDecoration(
                   image:
                       vm.settings.backgroundImagePath != null &&
-                          vm.settings.backgroundImagePath!.isNotEmpty
-                      ? DecorationImage(
-                          image: FileImage(
-                            File(vm.settings.backgroundImagePath!),
-                          ),
-                          fit: BoxFit.cover,
-                          colorFilter: ColorFilter.mode(
-                            Colors.black.withOpacity(0.3),
-                            BlendMode.darken,
-                          ),
-                        )
-                      : null,
-                  gradient: headerGradient, // ใช้ Gradient เป็น Fallback
+                              vm.settings.backgroundImagePath!.isNotEmpty
+                          ? DecorationImage(
+                              image: FileImage(
+                                File(vm.settings.backgroundImagePath!),
+                              ),
+                              fit: BoxFit.cover,
+                              colorFilter: ColorFilter.mode(
+                                Colors.black.withOpacity(0.3),
+                                BlendMode.darken,
+                              ),
+                            )
+                          : null,
+                  gradient: headerGradient,
                 ),
           child: Scaffold(
             backgroundColor: Colors.transparent,
@@ -311,11 +390,7 @@ class _DetailPageState extends State<DetailPage> {
                   childOf: null,
                 );
                 if (result == true) {
-                  await _loadAndStructureSubItems();
-                  Provider.of<HomeViewModel>(
-                    context,
-                    listen: false,
-                  ).loadItems();
+                  // การโหลดข้อมูลใหม่จะถูกจัดการในฟังก์ชัน save แล้ว
                 }
               },
               child: Ink(
@@ -378,14 +453,7 @@ class _DetailPageState extends State<DetailPage> {
                             ? AppColors.primary
                             : AppColors.textOnPrimary,
                       ),
-                      onPressed: () async {
-                        await PdfExporter.generateAndSharePdf(
-                          item,
-                          _subItemsTree,
-                          _hierarchy,
-                          _calculatedTotals,
-                        );
-                      },
+                      onPressed: () => _showPdfPreview(item),
                     ),
                   ],
                   title: _isScrolled
@@ -466,13 +534,9 @@ class _DetailPageState extends State<DetailPage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
-                      /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                      // เปลี่ยนจากการเช็ค isSubItemsLoading เป็นการเช็คว่า tree ว่างหรือไม่
-                      // เพื่อแสดง UI ที่เหมาะสมโดยไม่มีหน้า loading มาคั่น
                       child: _subItemsTree.isEmpty
                           ? _buildEmptySubItems()
                           : _buildSubItemTree(_subItemsTree, 0, item),
-                      /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     ),
                   ),
                 ),
@@ -509,14 +573,9 @@ class _DetailPageState extends State<DetailPage> {
                     context,
                     item: mainItem,
                     childOf: subItem.id,
-                    parentTitlePrefix: subItem.title.split(' ').first,
                   );
                   if (result == true) {
-                    await _loadAndStructureSubItems();
-                    Provider.of<HomeViewModel>(
-                      context,
-                      listen: false,
-                    ).loadItems();
+                    // การโหลดข้อมูลใหม่จะถูกจัดการในฟังก์ชัน save แล้ว
                   }
                 },
               ),
@@ -675,20 +734,29 @@ class _DetailPageState extends State<DetailPage> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Spacer(),
-                  if (budget.selectedDate != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      DateFormat('dd/MM/yyyy').format(budget.selectedDate!),
-                      style: AppTextStyles.subText.copyWith(fontSize: 12),
+                  const Spacer(),
+                  if (budget.notes != null && budget.notes!.isNotEmpty)
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.info_outline, color: Colors.white70, size: 20),
+                      onPressed: () => _showNotesDialog(context, budget.notes!),
                     ),
-                  ],
                 ],
               ),
               const SizedBox(height: 4),
               _buildAmountText(Currency.KIP, budget.amountKip, isVisible),
               _buildAmountText(Currency.THB, budget.amountThb, isVisible),
               _buildAmountText(Currency.USD, budget.amountUsd, isVisible),
+              const Spacer(),
+              if (budget.selectedDate != null)
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Text(
+                    DateFormat('dd/MM/yyyy').format(budget.selectedDate!),
+                    style: AppTextStyles.subText.copyWith(fontSize: 12),
+                  ),
+                ),
             ],
           ),
         ),
@@ -869,10 +937,15 @@ class _DetailPageState extends State<DetailPage> {
               onPressed: () async {
                 final parentId = subItem.childOf;
                 await _deleteSubItemAndChildren(subItem.id!);
-                await _updateSubItemOrder(parentId);
+                /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                // หลังจากลบแล้ว ให้เรียกฟังก์ชันอัปเดตชื่อใหม่
+                await _updateAllTitlesAfterReorder(parentId);
+                /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+                await _loadAndStructureSubItems(); // โหลดใหม่
+                if (mounted) {
+                  Provider.of<HomeViewModel>(context, listen: false).loadItems();
+                }
                 Navigator.of(dialogContext).pop();
-                _loadAndStructureSubItems();
-                Provider.of<HomeViewModel>(context, listen: false).loadItems();
               },
               child: const Text('ລົບ'),
             ),
@@ -895,421 +968,21 @@ class _DetailPageState extends State<DetailPage> {
     required ItemModel item,
     SubItemModel? existingSubItem,
     int? childOf,
-    String? parentTitlePrefix,
   }) {
-    final bool isEditing = existingSubItem != null;
-    final formKey = GlobalKey<FormState>();
-
-    String titlePrefix = '';
-    String descriptiveTitle = '';
-
-    if (isEditing) {
-      int firstSpaceIndex = existingSubItem!.title.indexOf(' ');
-      if (firstSpaceIndex != -1) {
-        titlePrefix = existingSubItem.title.substring(0, firstSpaceIndex);
-        descriptiveTitle = existingSubItem.title.substring(firstSpaceIndex + 1);
-      } else {
-        titlePrefix = existingSubItem.title;
-        descriptiveTitle = '';
-      }
-    } else {
-      final siblings = _hierarchy[childOf] ?? [];
-      siblings.sort((a, b) => a.id!.compareTo(b.id!));
-      final newIndex = siblings.length + 1;
-      final prefix = parentTitlePrefix ?? item.title.split('. ').first;
-      titlePrefix = '$prefix.$newIndex';
-    }
-
-    final titleController = TextEditingController(text: descriptiveTitle);
-
-    final descriptionController = TextEditingController(
-      text: existingSubItem?.description,
-    );
-    final quantityController = TextEditingController(
-      text: existingSubItem?.quantity?.toString() ?? '',
-    );
-    final laborCostController = TextEditingController(
-      text: existingSubItem?.laborCost != null
-          ? NumberFormat("#,##0").format(existingSubItem!.laborCost)
-          : '',
-    );
-    final materialCostController = TextEditingController(
-      text: existingSubItem?.materialCost != null
-          ? NumberFormat("#,##0").format(existingSubItem!.materialCost)
-          : '',
-    );
-
-    String? selectedUnit = existingSubItem?.unit;
-    DateTime? selectedDate = existingSubItem?.selectedDate;
-
-    // ประกาศ state variable สำหรับสกุลเงิน
-    String selectedLaborCurrency =
-        existingSubItem?.laborCostCurrency ?? Currency.KIP.code;
-    String selectedMaterialCurrency =
-        existingSubItem?.materialCostCurrency ?? Currency.KIP.code;
-
-    // กำหนดค่าเริ่มต้นของตัวเลือกวันที่
-    DateSelectionOption dateSelectionOption = DateSelectionOption.none;
-    if (selectedDate != null) {
-      dateSelectionOption = DateSelectionOption.manual;
-    }
-
-    final List<String> units = [
-      'm',
-      'm²',
-      'm³',
-      'kg',
-      'unit',
-      'No Unit',
-      'ໂຕນ',
-      'ອັນ',
-      'ແກັດ',
-      ' ',
-    ];
-
     return showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              title: Text(
-                isEditing ? 'ແກ້ໄຂ: $titlePrefix' : 'ເພີ່ມລາຍການຍ່ອຍ',
-              ),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Container(
-                    width: MediaQuery.of(context).size.width,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!isEditing)
-                          Text(
-                            "ຫົວຂໍ້: $titlePrefix",
-                            style: AppTextStyles.body.copyWith(
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        TextFormField(
-                          controller: titleController,
-                          decoration: const InputDecoration(
-                            labelText: 'ຫົວຂໍ້',
-                          ),
-                          validator: (v) =>
-                              v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້ກ່ອນ' : null,
-                        ),
-                        TextFormField(
-                          controller: descriptionController,
-                          decoration: const InputDecoration(
-                            labelText: 'ລາຍລະອຽດ (ລົງແຖວເພື່ອເພີ່ມລາຍການ)',
-                          ),
-                          keyboardType: TextInputType.multiline,
-                          maxLines: null,
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: TextFormField(
-                                controller: quantityController,
-                                decoration: const InputDecoration(
-                                  labelText: 'ຈຳນວນ',
-                                ),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 3,
-                              child: DropdownButtonFormField<String>(
-                                value: selectedUnit,
-                                hint: const Text('ໜ່ວຍ'),
-                                items: units
-                                    .map(
-                                      (String unit) => DropdownMenuItem<String>(
-                                        value: unit,
-                                        child: Text(unit),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (newValue) => setStateDialog(
-                                  () => selectedUnit = newValue,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 24),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: TextFormField(
-                                controller: laborCostController,
-                                decoration: const InputDecoration(
-                                  labelText: 'ຄ່າແຮງ',
-                                ),
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  CurrencyInputFormatter(),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 2,
-                              child: DropdownButtonFormField<String>(
-                                value: selectedLaborCurrency,
-                                items: Currency.values
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c.code,
-                                        child: Text(c.symbol),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) {
-                                  setStateDialog(() {
-                                    selectedLaborCurrency = v!;
-                                  });
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: TextFormField(
-                                controller: materialCostController,
-                                decoration: const InputDecoration(
-                                  labelText: 'ຄ່າວັດສະດຸ',
-                                ),
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                  CurrencyInputFormatter(),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 2,
-                              child: DropdownButtonFormField<String>(
-                                value: selectedMaterialCurrency,
-                                items: Currency.values
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c.code,
-                                        child: Text(c.symbol),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) {
-                                  setStateDialog(() {
-                                    selectedMaterialCurrency = v!;
-                                  });
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 24),
-
-                        // UI ใหม่สำหรับเลือกวันที่ (พร้อมคำแปลภาษาลาว)
-                        const Text(
-                          'ຕັ້ງຄ່າວັນທີ',
-                          style: AppTextStyles.bodyBold,
-                        ),
-                        Column(
-                          children: [
-                            RadioListTile<DateSelectionOption>(
-                              title: const Text('ບໍ່ລະບຸວັນທີ'),
-                              value: DateSelectionOption.none,
-                              groupValue: dateSelectionOption,
-                              onChanged: (value) {
-                                setStateDialog(() {
-                                  dateSelectionOption = value!;
-                                  selectedDate = null;
-                                });
-                              },
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            RadioListTile<DateSelectionOption>(
-                              title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
-                              value: DateSelectionOption.today,
-                              groupValue: dateSelectionOption,
-                              onChanged: (value) {
-                                setStateDialog(() {
-                                  dateSelectionOption = value!;
-                                  selectedDate = DateTime.now();
-                                });
-                              },
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            RadioListTile<DateSelectionOption>(
-                              title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
-                              value: DateSelectionOption.manual,
-                              groupValue: dateSelectionOption,
-                              onChanged: (value) {
-                                setStateDialog(() {
-                                  dateSelectionOption = value!;
-                                  if (existingSubItem?.selectedDate == null) {
-                                    selectedDate = null;
-                                  }
-                                });
-                              },
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ],
-                        ),
-                        if (dateSelectionOption == DateSelectionOption.today &&
-                            selectedDate != null)
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              left: 16.0,
-                              bottom: 8.0,
-                            ),
-                            child: Text(
-                              'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
-                              style: AppTextStyles.body.copyWith(
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          ),
-                        if (dateSelectionOption == DateSelectionOption.manual)
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              left: 16.0,
-                              bottom: 8.0,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.calendar_today),
-                                  label: const Text('ເລືອກວັນທີ'),
-                                  onPressed: () async {
-                                    final DateTime? picked =
-                                        await showDatePicker(
-                                          context: context,
-                                          locale: const Locale('lo'),
-                                          initialDate:
-                                              selectedDate ?? DateTime.now(),
-                                          firstDate: DateTime(2000),
-                                          lastDate: DateTime(2101),
-                                        );
-                                    if (picked != null &&
-                                        picked != selectedDate) {
-                                      setStateDialog(() {
-                                        selectedDate = picked;
-                                      });
-                                    }
-                                  },
-                                ),
-                                if (selectedDate != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(selectedDate!)}',
-                                    style: AppTextStyles.body.copyWith(
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('ຍົກເລີກ'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (formKey.currentState!.validate()) {
-                      final laborCost =
-                          double.tryParse(
-                            laborCostController.text.replaceAll(',', ''),
-                          ) ??
-                          0.0;
-                      final materialCost =
-                          double.tryParse(
-                            materialCostController.text.replaceAll(',', ''),
-                          ) ??
-                          0.0;
-                      final finalTitle = '$titlePrefix ${titleController.text}'
-                          .trim();
-
-                      if (isEditing) {
-                        final updatedItem = SubItemModel(
-                          id: existingSubItem!.id,
-                          parentId: existingSubItem.parentId,
-                          childOf: existingSubItem.childOf,
-                          title: finalTitle,
-                          description: descriptionController.text.isNotEmpty
-                              ? descriptionController.text
-                              : null,
-                          quantity: double.tryParse(quantityController.text),
-                          unit: selectedUnit,
-                          laborCost: laborCost,
-                          laborCostCurrency: laborCost > 0
-                              ? selectedLaborCurrency
-                              : null,
-                          materialCost: materialCost,
-                          materialCostCurrency: materialCost > 0
-                              ? selectedMaterialCurrency
-                              : null,
-                          selectedDate: selectedDate,
-                        );
-                        await DBService.instance.updateSubItem(updatedItem);
-                      } else {
-                        final newSubItem = SubItemModel(
-                          parentId: item.id!,
-                          childOf: childOf,
-                          title: finalTitle,
-                          description: descriptionController.text.isNotEmpty
-                              ? descriptionController.text
-                              : null,
-                          quantity: double.tryParse(quantityController.text),
-                          unit: selectedUnit,
-                          laborCost: laborCost,
-                          laborCostCurrency: laborCost > 0
-                              ? selectedLaborCurrency
-                              : null,
-                          materialCost: materialCost,
-                          materialCostCurrency: materialCost > 0
-                              ? selectedMaterialCurrency
-                              : null,
-                          selectedDate: selectedDate,
-                        );
-                        await DBService.instance.createSubItem(newSubItem);
-                      }
-                      Navigator.of(dialogContext).pop(true);
-                    }
-                  },
-                  child: const Text('ບັນທຶກ'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (dialogContext) => _AddEditSubItemDialog(
+        mainItem: item,
+        existingSubItem: existingSubItem,
+        childOf: childOf,
+        hierarchy: _hierarchy,
+        onSave: ({required itemToSave, oldSortOrder}) async {
+          await _saveSubItemAndReorder(
+            itemToSave: itemToSave,
+            oldSortOrder: oldSortOrder,
+          );
+        },
+      ),
     );
   }
 
@@ -1336,6 +1009,7 @@ class _DetailPageState extends State<DetailPage> {
           ? NumberFormat("#,##0").format(existingBudget.amountUsd)
           : '',
     );
+    final notesController = TextEditingController(text: existingBudget?.notes);
     DateTime? selectedDate = existingBudget?.selectedDate;
     bool showCalendar = existingBudget?.selectedDate != null;
 
@@ -1350,8 +1024,7 @@ class _DetailPageState extends State<DetailPage> {
                     ? 'ແກ້ໄຂງວດທີ່ $quarterNumber'
                     : 'ເພີ່ມງວດທີ່ $quarterNumber',
               ),
-              content: Container(
-                // height: MediaQuery.of(context).size.height * 0.5,
+              content: SizedBox(
                 width: MediaQuery.of(context).size.width,
                 child: Form(
                   key: formKey,
@@ -1405,6 +1078,16 @@ class _DetailPageState extends State<DetailPage> {
                           ],
                         ),
                         const Divider(height: 24),
+                        TextFormField(
+                          controller: notesController,
+                          decoration: const InputDecoration(
+                            labelText: 'ໝາຍເຫດ',
+                            icon: Icon(Icons.note_alt_outlined),
+                          ),
+                          keyboardType: TextInputType.multiline,
+                          maxLines: null,
+                        ),
+                        const Divider(height: 24),
                         CheckboxListTile(
                           title: const Text("ສະແດງວັນທີ"),
                           value: showCalendar,
@@ -1455,7 +1138,6 @@ class _DetailPageState extends State<DetailPage> {
                       style: TextStyle(color: AppColors.danger),
                     ),
                   ),
-                // const Spacer(), // <- บรรทัดนี้คือตัวปัญหาที่ทำให้แอปพัง
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('ຍົກເລີກ'),
@@ -1483,6 +1165,7 @@ class _DetailPageState extends State<DetailPage> {
                             ) ??
                             0.0,
                         selectedDate: selectedDate,
+                        notes: notesController.text.isNotEmpty ? notesController.text : null,
                       );
                       Navigator.of(context).pop(budget);
                     }
@@ -1520,6 +1203,429 @@ class _DetailPageState extends State<DetailPage> {
           ],
         );
       },
+    );
+  }
+  
+  Future<void> _showNotesDialog(BuildContext context, String notes) {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('ໝາຍເຫດ'),
+          content: SingleChildScrollView(
+            child: Text(notes),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('ປິດ'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AddEditSubItemDialog extends StatefulWidget {
+  final ItemModel mainItem;
+  final SubItemModel? existingSubItem;
+  final int? childOf;
+  final Map<int?, List<SubItemModel>> hierarchy;
+  final Future<void> Function({required SubItemModel itemToSave, int? oldSortOrder}) onSave;
+
+  const _AddEditSubItemDialog({
+    required this.mainItem,
+    this.existingSubItem,
+    this.childOf,
+    required this.hierarchy,
+    required this.onSave,
+  });
+
+  @override
+  State<_AddEditSubItemDialog> createState() => _AddEditSubItemDialogState();
+}
+
+class _AddEditSubItemDialogState extends State<_AddEditSubItemDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late String _titlePrefix;
+  late TextEditingController _sortOrderController;
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _quantityController;
+  String? _selectedUnit;
+  DateTime? _selectedDate;
+  DateSelectionOption _dateSelectionOption = DateSelectionOption.none;
+  int? _oldSortOrder;
+
+  late List<CostModel> _costs;
+  final List<TextEditingController> _costDescControllers = [];
+  final List<TextEditingController> _costAmountControllers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeData();
+  }
+
+  void _initializeData() {
+    final isEditing = widget.existingSubItem != null;
+    final siblings = widget.hierarchy[widget.childOf] ?? [];
+
+    if (isEditing) {
+      final subItem = widget.existingSubItem!;
+      final titleParts = subItem.title.split(' ');
+      _titlePrefix = titleParts.first;
+      _titleController = TextEditingController(text: titleParts.skip(1).join(' '));
+      _sortOrderController = TextEditingController(text: subItem.sortOrder.toString());
+      _oldSortOrder = subItem.sortOrder;
+
+      _descriptionController = TextEditingController(text: subItem.description);
+      _quantityController = TextEditingController(text: subItem.quantity?.toString() ?? '');
+      _selectedUnit = subItem.unit;
+      _selectedDate = subItem.selectedDate;
+      if (_selectedDate != null) {
+        _dateSelectionOption = DateSelectionOption.manual;
+      }
+      _costs = List<CostModel>.from(subItem.costs.map((c) => CostModel(description: c.description, amount: c.amount, currency: c.currency)));
+      if (_costs.isEmpty) {
+        _costs.addAll([
+          CostModel(description: 'ຄ່າແຮງ', currency: Currency.KIP.code),
+          CostModel(description: 'ຄ່າວັດສະດຸ', currency: Currency.KIP.code),
+        ]);
+      }
+    } else {
+      if (widget.childOf == null) {
+        _titlePrefix = widget.mainItem.title.split('. ').first;
+      } else {
+        // This logic needs all items, not just hierarchy, to be safe.
+        // However, for dialog init, this should be okay as hierarchy is passed in.
+        final parentItem = widget.hierarchy.values.expand((list) => list).firstWhere((item) => item.id == widget.childOf);
+        _titlePrefix = parentItem.title.split(' ').first;
+      }
+      
+      final nextSortOrder = (siblings.isNotEmpty ? siblings.map((s) => s.sortOrder).reduce((a, b) => a > b ? a : b) : 0) + 1;
+      _sortOrderController = TextEditingController(text: nextSortOrder.toString());
+      _titleController = TextEditingController();
+      _descriptionController = TextEditingController();
+      _quantityController = TextEditingController();
+      _costs = [
+        CostModel(description: 'ຄ່າແຮງ', currency: Currency.KIP.code),
+        CostModel(description: 'ຄ່າວັດສະດຸ', currency: Currency.KIP.code),
+      ];
+    }
+
+    for (var cost in _costs) {
+      _addControllersForCost(cost);
+    }
+  }
+
+  void _addControllersForCost(CostModel cost) {
+    _costDescControllers.add(TextEditingController(text: cost.description));
+    _costAmountControllers.add(TextEditingController(
+      text: cost.amount > 0 ? NumberFormat("#,##0").format(cost.amount) : '',
+    ));
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _quantityController.dispose();
+    _sortOrderController.dispose();
+    for (var controller in _costDescControllers) {
+      controller.dispose();
+    }
+    for (var controller in _costAmountControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addNewCostItem() {
+    setState(() {
+      final newCost = CostModel(description: '', currency: Currency.KIP.code);
+      _costs.add(newCost);
+      _addControllersForCost(newCost);
+    });
+  }
+
+  void _removeCostItem(int index) {
+    setState(() {
+      _costs.removeAt(index);
+      _costDescControllers.removeAt(index).dispose();
+      _costAmountControllers.removeAt(index).dispose();
+    });
+  }
+
+  void _saveForm() async {
+    if (_formKey.currentState!.validate()) {
+      for (int i = 0; i < _costs.length; i++) {
+        _costs[i].description = _costDescControllers[i].text;
+        _costs[i].amount = double.tryParse(_costAmountControllers[i].text.replaceAll(',', '')) ?? 0.0;
+      }
+
+      // Title will be constructed by the backend logic, we just need to pass the description part
+      final descriptionPart = _titleController.text.trim();
+      // We pass a temporary title, the real one is set in _saveSubItemAndReorder
+      final tempTitle = '${_titlePrefix}.x $descriptionPart';
+
+      final subItemToSave = SubItemModel(
+        id: widget.existingSubItem?.id,
+        parentId: widget.mainItem.id!,
+        childOf: widget.childOf,
+        title: widget.existingSubItem?.title ?? tempTitle, // Use old title to preserve description part
+        description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
+        quantity: double.tryParse(_quantityController.text),
+        unit: _selectedUnit,
+        selectedDate: _selectedDate,
+        costs: _costs.where((c) => c.description.isNotEmpty && c.amount > 0).toList(),
+        sortOrder: int.tryParse(_sortOrderController.text) ?? 999,
+      );
+
+      await widget.onSave(itemToSave: subItemToSave, oldSortOrder: _oldSortOrder);
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEditing = widget.existingSubItem != null;
+    final List<String> units = ['m', 'm²', 'm³', 'kg', 'unit', 'No Unit', 'ໂຕນ', 'ອັນ', 'ແກັດ', ' '];
+
+    return AlertDialog(
+      title: Text(isEditing ? 'ແກ້ໄຂລາຍການ' : 'ເພີ່ມລາຍການຍ່ອຍ'),
+      content: Form(
+        key: _formKey,
+        child: SizedBox(
+          width: MediaQuery.of(context).size.width,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('$_titlePrefix.', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(width: 4),
+                    SizedBox(
+                      width: 40,
+                      child: TextFormField(
+                        controller: _sortOrderController,
+                        decoration: const InputDecoration(labelText: 'ລຳດັບ'),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        validator: (v) => v!.isEmpty ? 'ใส่' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _titleController,
+                        decoration: const InputDecoration(labelText: 'ຫົວຂໍ້'),
+                        validator: (v) => v!.isEmpty ? 'ກະລຸນາປ້ອນຫົວຂໍ້ກ່ອນ' : null,
+                      ),
+                    ),
+                  ],
+                ),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'ລາຍລະອຽດ (ລົງແຖວເພື່ອເພີ່ມລາຍການ)'),
+                  keyboardType: TextInputType.multiline,
+                  maxLines: null,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _quantityController,
+                        decoration: const InputDecoration(labelText: 'ຈຳນວນ'),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 3,
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedUnit,
+                        hint: const Text('ໜ່ວຍ'),
+                        items: units.map((String unit) => DropdownMenuItem<String>(value: unit, child: Text(unit))).toList(),
+                        onChanged: (newValue) => setState(() => _selectedUnit = newValue),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                Text('ລາຍການຄ່າໃຊ້ຈ່າຍ', style: AppTextStyles.bodyBold),
+                const SizedBox(height: 8),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _costs.length,
+                  itemBuilder: (context, index) {
+                    return _buildCostRow(index);
+                  },
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text('ເພີ່ມລາຍການ'),
+                    onPressed: _addNewCostItem,
+                  ),
+                ),
+                const Divider(height: 24),
+                const Text('ຕັ້ງຄ່າວັນທີ', style: AppTextStyles.bodyBold),
+                Column(
+                  children: [
+                    RadioListTile<DateSelectionOption>(
+                      title: const Text('ບໍ່ລະບຸວັນທີ'),
+                      value: DateSelectionOption.none,
+                      groupValue: _dateSelectionOption,
+                      onChanged: (value) {
+                        setState(() {
+                          _dateSelectionOption = value!;
+                          _selectedDate = null;
+                        });
+                      },
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    RadioListTile<DateSelectionOption>(
+                      title: const Text('ໃຊ້ວັນທີປັດຈຸບັນ'),
+                      value: DateSelectionOption.today,
+                      groupValue: _dateSelectionOption,
+                      onChanged: (value) {
+                        setState(() {
+                          _dateSelectionOption = value!;
+                          _selectedDate = DateTime.now();
+                        });
+                      },
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    RadioListTile<DateSelectionOption>(
+                      title: const Text('ເລືອກດ້ວຍຕົວເອງ'),
+                      value: DateSelectionOption.manual,
+                      groupValue: _dateSelectionOption,
+                      onChanged: (value) {
+                        setState(() {
+                          _dateSelectionOption = value!;
+                          if (widget.existingSubItem?.selectedDate == null) {
+                            _selectedDate = null;
+                          }
+                        });
+                      },
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+                if (_dateSelectionOption == DateSelectionOption.today && _selectedDate != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                    child: Text(
+                      'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(_selectedDate!)}',
+                      style: AppTextStyles.body.copyWith(color: AppColors.primary),
+                    ),
+                  ),
+                if (_dateSelectionOption == DateSelectionOption.manual)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16.0, bottom: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.calendar_today),
+                          label: const Text('ເລືອກວັນທີ'),
+                          onPressed: () async {
+                            final DateTime? picked = await showDatePicker(
+                              context: context,
+                              locale: const Locale('lo'),
+                              initialDate: _selectedDate ?? DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2101),
+                            );
+                            if (picked != null && picked != _selectedDate) {
+                              setState(() {
+                                _selectedDate = picked;
+                              });
+                            }
+                          },
+                        ),
+                        if (_selectedDate != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'ວັນທີທີ່ເລືອກ: ${DateFormat('dd MMMM yyyy', 'lo').format(_selectedDate!)}',
+                            style: AppTextStyles.body.copyWith(color: AppColors.primary),
+                          ),
+                        ]
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('ຍົກເລີກ')),
+        ElevatedButton(onPressed: _saveForm, child: const Text('ບັນທຶກ')),
+      ],
+    );
+  }
+
+  Widget _buildCostRow(int index) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            flex: 4,
+            child: TextFormField(
+              controller: _costDescControllers[index],
+              decoration: InputDecoration(labelText: 'ລາຍການ ${index + 1}'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: TextFormField(
+              controller: _costAmountControllers[index],
+              decoration: const InputDecoration(labelText: 'ຈຳນວນເງິນ'),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly, CurrencyInputFormatter()],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: DropdownButtonFormField<String>(
+              value: _costs[index].currency,
+              items: Currency.values.map((c) => DropdownMenuItem(value: c.code, child: Text(c.symbol))).toList(),
+              onChanged: (v) {
+                if (v != null) {
+                  setState(() {
+                    _costs[index].currency = v;
+                  });
+                }
+              },
+            ),
+          ),
+          if (_costs.length > 1)
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
+              onPressed: () => _removeCostItem(index),
+            )
+          else 
+            const SizedBox(width: 48),
+        ],
+      ),
     );
   }
 }
@@ -1562,7 +1668,6 @@ class _SubItemCardState extends State<SubItemCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(context),
-              // ย้ายวันที่มาแสดงผลตรงนี้
               if (widget.subItem.selectedDate != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 4.0),
@@ -1618,9 +1723,7 @@ class _SubItemCardState extends State<SubItemCard> {
                           childOf: widget.subItem.childOf,
                         );
                 if (result == true) {
-                  (context.findAncestorStateOfType<_DetailPageState>())
-                      ?._loadAndStructureSubItems();
-                  vm.loadItems();
+                  // No need to reload here, it's handled by the onSave callback
                 }
               } else if (value == 'delete') {
                 (context.findAncestorStateOfType<_DetailPageState>())
@@ -1780,7 +1883,6 @@ class _SubItemCardState extends State<SubItemCard> {
               ),
             ],
           ),
-          // ลบวันที่ออกจากส่วนนี้ เพราะย้ายไปแสดงด้านบนแล้ว
           const SizedBox(height: 16),
           Center(
             child: ElevatedButton.icon(
