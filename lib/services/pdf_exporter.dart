@@ -20,7 +20,7 @@ class PdfExporter {
   ) async {
     final pdf = pw.Document();
 
-    final fontData = await rootBundle.load("assets/fonts/NotoSansLao.ttf");
+    final fontData = await rootBundle.load("assets/fonts/Saysettha_OT.ttf");
     final ttf = pw.Font.ttf(fontData);
     final laoStyle = pw.TextStyle(font: ttf, fontSize: 10);
     final laoStyleBold = pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold);
