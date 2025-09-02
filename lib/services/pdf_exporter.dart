@@ -1,15 +1,14 @@
 import 'dart:typed_data';
-import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+import 'package:collection/collection.dart';
+
 import '../data/item_model.dart';
+import '../data/quarterly_budget_model.dart';
 import '../data/sub_item_model.dart';
-import '../logic/home_vm.dart';
 import '../presentation/core/app_currencies.dart';
-import 'db_service.dart';
 
 class PdfExporter {
   static Future<Uint8List> generatePdfBytes(
@@ -17,6 +16,7 @@ class PdfExporter {
     List<SubItemModel> topLevelSubItems,
     Map<int?, List<SubItemModel>> hierarchy,
     Map<int, Map<String, dynamic>> calculatedTotals,
+    List<QuarterlyBudgetModel> quarterlyBudgets,
   ) async {
     final pdf = pw.Document();
 
@@ -25,7 +25,6 @@ class PdfExporter {
     final laoStyle = pw.TextStyle(font: ttf, fontSize: 10);
     final laoStyleBold = pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold);
 
-    // Calculate grand totals for the footer
     final grandTotalCosts = { for (var c in Currency.values) c.code : 0.0 };
     for (final topItem in topLevelSubItems) {
       final totals = calculatedTotals[topItem.id];
@@ -42,11 +41,9 @@ class PdfExporter {
         margin: const pw.EdgeInsets.all(32),
         build: (pw.Context context) {
           return [
-            _buildPdfHeader(parentItem, laoStyle, laoStyleBold),
+            _buildPdfHeader(parentItem, quarterlyBudgets, grandTotalCosts, laoStyle, laoStyleBold),
             pw.SizedBox(height: 20),
             _buildPdfTable(topLevelSubItems, hierarchy, calculatedTotals, laoStyle, laoStyleBold),
-            pw.SizedBox(height: 20),
-            _buildPdfFooter(parentItem, grandTotalCosts, laoStyle, laoStyleBold),
           ];
         },
       ),
@@ -56,63 +53,58 @@ class PdfExporter {
   }
 
   static Future<Uint8List> generateCombinedPdfBytes(
-    List<ItemModel> itemsToExport,
-    HomeViewModel vm,
+    List<ItemModel> items,
+    List<SubItemModel> allSubItems,
+    List<QuarterlyBudgetModel> allQuarterlyBudgets,
   ) async {
     final pdf = pw.Document();
+
     final fontData = await rootBundle.load("assets/fonts/Saysettha_OT.ttf");
     final ttf = pw.Font.ttf(fontData);
     final laoStyle = pw.TextStyle(font: ttf, fontSize: 10);
     final laoStyleBold = pw.TextStyle(font: ttf, fontSize: 10, fontWeight: pw.FontWeight.bold);
+    
+    final allSubItemsGrouped = groupBy(allSubItems, (SubItemModel i) => i.parentId);
+    final allBudgetsGrouped = groupBy(allQuarterlyBudgets, (QuarterlyBudgetModel i) => i.parentId);
 
-    // ดึงข้อมูล sub-items ทั้งหมดมาครั้งเดียวเพื่อประสิทธิภาพ
-    final allSubItems = await DBService.instance.readAllSubItems();
-    final groupedSubItems = groupBy(allSubItems, (SubItemModel subItem) => subItem.parentId);
-
-    for (final parentItem in itemsToExport) {
-      final subItemsForThisParent = groupedSubItems[parentItem.id] ?? [];
-
-      // สร้างโครงสร้าง hierarchy และคำนวณผลรวมสำหรับโปรเจกต์นี้
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final subItemsForItem = allSubItemsGrouped[item.id] ?? [];
       final hierarchy = <int?, List<SubItemModel>>{};
-      for (final subItem in subItemsForThisParent) {
+      for (final subItem in subItemsForItem) {
         hierarchy.putIfAbsent(subItem.childOf, () => []).add(subItem);
       }
       hierarchy.forEach((key, value) {
         value.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
       });
-
-      final calculatedTotals = <int, Map<String, dynamic>>{};
+      
       final topLevelSubItems = hierarchy[null] ?? [];
-      for (final item in topLevelSubItems) {
-        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-        // เรียกใช้ฟังก์ชัน private ที่สร้างขึ้นใหม่ในคลาสนี้แทน
-        _calculateRecursiveTotalsForPdf(item, hierarchy, calculatedTotals);
-        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+      final calculatedTotals = <int, Map<String, dynamic>>{};
+      for (final subItem in topLevelSubItems) {
+         _calculateRecursiveTotals(subItem, hierarchy, calculatedTotals);
       }
-
-      // คำนวณยอดรวมค่าใช้จ่ายทั้งหมดของโปรเจกต์นี้
+      
       final grandTotalCosts = { for (var c in Currency.values) c.code : 0.0 };
-      for (final topItem in topLevelSubItems) {
-        final totals = calculatedTotals[topItem.id];
+      for (final topSubItem in topLevelSubItems) {
+        final totals = calculatedTotals[topSubItem.id];
         if (totals != null) {
           (totals['costs'] as Map<String, double>).forEach((currency, cost) {
             grandTotalCosts[currency] = (grandTotalCosts[currency] ?? 0) + cost;
           });
         }
       }
+      
+      final budgetsForItem = allBudgetsGrouped[item.id] ?? [];
 
-      // เพิ่มหน้าใหม่สำหรับแต่ละโปรเจกต์
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(32),
           build: (pw.Context context) {
             return [
-              _buildPdfHeader(parentItem, laoStyle, laoStyleBold),
+              _buildPdfHeader(item, budgetsForItem, grandTotalCosts, laoStyle, laoStyleBold),
               pw.SizedBox(height: 20),
               _buildPdfTable(topLevelSubItems, hierarchy, calculatedTotals, laoStyle, laoStyleBold),
-              pw.SizedBox(height: 20),
-              _buildPdfFooter(parentItem, grandTotalCosts, laoStyle, laoStyleBold),
             ];
           },
         ),
@@ -121,41 +113,20 @@ class PdfExporter {
 
     return pdf.save();
   }
-
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // ฟังก์ชันนี้ถูกคัดลอกมาจาก HomeViewModel เพื่อแก้ปัญหาการเข้าถึง private method
-  static Map<String, dynamic> _calculateRecursiveTotalsForPdf(
-    SubItemModel item,
-    Map<int?, List<SubItemModel>> hierarchy,
-    Map<int, Map<String, dynamic>> calculatedTotals,
+  static pw.Widget _buildPdfHeader(
+    ItemModel item, 
+    List<QuarterlyBudgetModel> quarterlyBudgets,
+    Map<String, double> totalCosts,
+    pw.TextStyle style, 
+    pw.TextStyle styleBold
   ) {
-    if (calculatedTotals.containsKey(item.id)) {
-      return calculatedTotals[item.id]!;
+    final totalBudgetMap = { for (var c in Currency.values) c.code : 0.0 };
+    for (var budget in quarterlyBudgets) {
+      totalBudgetMap[Currency.KIP.code] = (totalBudgetMap[Currency.KIP.code] ?? 0) + budget.amountKip;
+      totalBudgetMap[Currency.THB.code] = (totalBudgetMap[Currency.THB.code] ?? 0) + budget.amountThb;
+      totalBudgetMap[Currency.USD.code] = (totalBudgetMap[Currency.USD.code] ?? 0) + budget.amountUsd;
     }
 
-    double totalQuantity = item.quantity ?? 0;
-    final totalCosts = { for (var c in Currency.values) c.code : 0.0 };
-
-    for (final cost in item.costs) {
-      totalCosts[cost.currency] = (totalCosts[cost.currency] ?? 0) + cost.amount;
-    }
-
-    final children = hierarchy[item.id] ?? [];
-    for (final child in children) {
-      final childTotals = _calculateRecursiveTotalsForPdf(child, hierarchy, calculatedTotals);
-      totalQuantity += childTotals['quantity'] as double;
-      (childTotals['costs'] as Map<String, double>).forEach((currency, cost) {
-        totalCosts[currency] = (totalCosts[currency] ?? 0) + cost;
-      });
-    }
-
-    final result = {'quantity': totalQuantity, 'costs': totalCosts};
-    calculatedTotals[item.id!] = result;
-    return result;
-  }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
-
-  static pw.Widget _buildPdfHeader(ItemModel item, pw.TextStyle style, pw.TextStyle styleBold) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -163,10 +134,115 @@ class PdfExporter {
         pw.SizedBox(height: 5),
         pw.Text(item.description, style: style.copyWith(fontSize: 12)),
         pw.Divider(height: 20),
+        
+        pw.Text('ລາຍລະອຽດງົບປະມານ:', style: styleBold.copyWith(fontSize: 14)),
+        pw.SizedBox(height: 8),
+        _buildBudgetsTable(quarterlyBudgets, style, styleBold),
+
+        pw.SizedBox(height: 15),
+
+        // pw.Text('ສະຫຼຸບລວມ:', style: styleBold.copyWith(fontSize: 14)),
+        pw.SizedBox(height: 8),
+        _buildSummaryTable(totalBudgetMap, totalCosts, style, styleBold), // เปลี่ยนมาใช้ฟังก์ชันตาราง
       ],
     );
   }
+  static pw.Widget _buildBudgetsTable(List<QuarterlyBudgetModel> budgets, pw.TextStyle style, pw.TextStyle styleBold) {
+    if (budgets.isEmpty) return pw.Text('ບໍ່ມີຂໍ້ມູນງົບປະມານ', style: style);
 
+    final headers = ['ງວດທີ່', 'ຈຳນວນເງິນ', 'ວັນທີ/ໝາຍເຫດ'];
+    
+    return pw.Table(
+      border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+      columnWidths: const {
+        0: pw.FlexColumnWidth(1),
+        1: pw.FlexColumnWidth(2),
+        2: pw.FlexColumnWidth(3),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          children: headers.map((header) => pw.Padding(
+            padding: const pw.EdgeInsets.all(4),
+            child: pw.Text(header, style: styleBold, textAlign: pw.TextAlign.center),
+          )).toList(),
+        ),
+        ...budgets.map((budget) {
+          final amountWidgets = <pw.Widget>[];
+          if (budget.amountKip > 0) amountWidgets.add(pw.Text('${NumberFormat("#,##0.##").format(budget.amountKip)} ${Currency.KIP.laoName}', style: style));
+          if (budget.amountThb > 0) amountWidgets.add(pw.Text('${NumberFormat("#,##0.##").format(budget.amountThb)} ${Currency.THB.laoName}', style: style));
+          if (budget.amountUsd > 0) amountWidgets.add(pw.Text('${NumberFormat("#,##0.##").format(budget.amountUsd)} ${Currency.USD.laoName}', style: style));
+
+          final notesWidgets = <pw.Widget>[];
+          if(budget.selectedDate != null) notesWidgets.add(pw.Text('ວັນທີ: ${DateFormat('dd/MM/yyyy').format(budget.selectedDate!)}', style: style));
+          if(budget.notes != null && budget.notes!.isNotEmpty) notesWidgets.add(pw.Text(budget.notes!, style: style));
+
+
+          return pw.TableRow(
+            children: [
+              pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(budget.quarterNumber.toString(), style: style, textAlign: pw.TextAlign.center)),
+              pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: amountWidgets)),
+              pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: notesWidgets)),
+            ]
+          );
+        })
+      ]
+    );
+  }
+
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // สร้าง Widget ใหม่สำหรับสร้าง "ตาราง" สรุปยอด
+  static pw.Widget _buildSummaryTable(Map<String, double> totalBudget, Map<String, double> totalCosts, pw.TextStyle style, pw.TextStyle styleBold) {
+    final currencies = [Currency.KIP, Currency.THB, Currency.USD];
+    
+    // Header Row
+    final headerWidgets = <pw.Widget>[pw.Text('ລາຍການ', style: styleBold, textAlign: pw.TextAlign.center)];
+    headerWidgets.addAll(
+      currencies.map((c) => pw.Text(c.laoName, style: styleBold, textAlign: pw.TextAlign.center))
+    );
+
+    // Data Rows
+    final rows = <pw.TableRow>[];
+    final rowTitles = ['ງົບປະມານ', 'ລວມຄ່າໃຊ້ຈ່າຍ', 'ຍອດຄົງເຫຼືອ'];
+    
+    for (int i=0; i < rowTitles.length; i++) {
+      final title = rowTitles[i];
+      final rowCells = <pw.Widget>[pw.Text(title, style: i == 2 ? styleBold : style)];
+
+      for (final currency in currencies) {
+        final budget = totalBudget[currency.code] ?? 0.0;
+        final cost = totalCosts[currency.code] ?? 0.0;
+        double value;
+        if (i == 0) { // Budget
+          value = budget;
+        } else if (i == 1) { // Cost
+          value = cost;
+        } else { // Remaining
+          value = budget - cost;
+        }
+        rowCells.add(pw.Text(NumberFormat("#,##0.##").format(value), style: i == 2 ? styleBold : style, textAlign: pw.TextAlign.right));
+      }
+      rows.add(pw.TableRow(children: rowCells.map((cell) => pw.Padding(padding: const pw.EdgeInsets.all(4), child: cell)).toList()));
+    }
+
+    return pw.Table(
+      border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+      columnWidths: const {
+        0: pw.FlexColumnWidth(2),
+        1: pw.FlexColumnWidth(1.5),
+        2: pw.FlexColumnWidth(1.5),
+        3: pw.FlexColumnWidth(1.5),
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          children: headerWidgets.map((header) => pw.Padding(padding: const pw.EdgeInsets.all(4), child: header)).toList()
+        ),
+        ...rows
+      ],
+    );
+  }
+  
   static pw.Widget _buildPdfTable(
     List<SubItemModel> topLevelItems,
     Map<int?, List<SubItemModel>> hierarchy,
@@ -176,19 +252,13 @@ class PdfExporter {
   ) {
     final headers = ['ລາຍການ', 'ຈຳນວນ', 'ລາຍລະອຽດຄ່າໃຊ້ຈ່າຍ', 'ລາຄາລວມ', 'ໝາຍເຫດ'];
 
+    // เราไม่จำเป็นต้องกำหนด border ใน header row อีกต่อไป เพราะจะกำหนดที่ Table หลัก
     final headerRow = pw.TableRow(
+      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
       children: List.generate(headers.length, (index) {
         return pw.Container(
           padding: const pw.EdgeInsets.all(5),
           alignment: pw.Alignment.center,
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              top: pw.BorderSide(width: 1, color: PdfColors.black),
-              bottom: pw.BorderSide(width: 1.5, color: PdfColors.black),
-              left: pw.BorderSide(width: 0.5, color: PdfColors.grey700),
-              right: pw.BorderSide(width: 0.5, color: PdfColors.grey700),
-            ),
-          ),
           child: pw.Text(headers[index], style: styleBold),
         );
       }),
@@ -197,6 +267,8 @@ class PdfExporter {
     final dataRows = _buildPdfRowsRecursive(topLevelItems, hierarchy, calculatedTotals, 0, style, styleBold);
 
     return pw.Table(
+      // กำหนดเส้นตารางทั้งหมดที่นี่ที่เดียว
+      border: pw.TableBorder.all(color: PdfColors.grey700, width: 0.5),
       columnWidths: const {
         0: pw.FlexColumnWidth(3),
         1: pw.FlexColumnWidth(1.2),
@@ -221,7 +293,7 @@ class PdfExporter {
     for (final item in items) {
       final totals = calculatedTotals[item.id] ?? {'quantity': 0.0, 'costs': {}};
       final totalCostsMap = totals['costs'] as Map<String, double>;
-   
+    
       final totalCostWidgets = <pw.Widget>[];
       totalCostsMap.forEach((currencyCode, cost) {
         if (cost > 0) {
@@ -234,7 +306,7 @@ class PdfExporter {
           );
         }
       });
-     
+      
       final costDetailWidgets = item.costs.map((cost) {
         if (cost.amount <= 0) return pw.SizedBox.shrink();
         final currency = CurrencyExtension.fromCode(cost.currency);
@@ -277,11 +349,7 @@ class PdfExporter {
 
       rows.add(
         pw.TableRow(
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              bottom: pw.BorderSide(width: 0.5, color: PdfColors.grey700),
-            ),
-          ),
+          // ไม่ต้องกำหนด border ที่นี่แล้ว
           children: List.generate(rowChildren.length, (colIndex) {
             return pw.Container(
               padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 4),
@@ -299,6 +367,7 @@ class PdfExporter {
     }
     return rows;
   }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   static pw.Widget _buildItemColumn(SubItemModel item, int level, pw.TextStyle style, pw.TextStyle styleBold) {
     final descriptionLines = (item.description ?? '')
@@ -326,45 +395,34 @@ class PdfExporter {
       ),
     );
   }
+  
+  static Map<String, dynamic> _calculateRecursiveTotals(
+    SubItemModel item,
+    Map<int?, List<SubItemModel>> hierarchy,
+    Map<int, Map<String, dynamic>> calculatedTotals,
+  ) {
+    if (calculatedTotals.containsKey(item.id)) {
+      return calculatedTotals[item.id]!;
+    }
 
-  static pw.Widget _buildPdfFooter(ItemModel parentItem, Map<String, double> totalCosts, pw.TextStyle style, pw.TextStyle styleBold) {
-   
-    final budgetMap = {
-      Currency.KIP.code: parentItem.amount,
-      Currency.THB.code: parentItem.amountThb,
-      Currency.USD.code: parentItem.amountUsd,
-    };
+    double totalQuantity = item.quantity ?? 0;
+    final totalCosts = { for (var c in Currency.values) c.code : 0.0 };
 
-    final footerContent = <pw.Widget>[];
+    for (final cost in item.costs) {
+      totalCosts[cost.currency] = (totalCosts[cost.currency] ?? 0) + cost.amount;
+    }
 
-    totalCosts.forEach((currencyCode, cost) {
-      if (cost > 0 || (budgetMap[currencyCode] ?? 0) > 0) {
-        final budget = budgetMap[currencyCode] ?? 0.0;
-        final remaining = budget - cost;
-        final currency = CurrencyExtension.fromCode(currencyCode);
+    final children = hierarchy[item.id] ?? [];
+    for (final child in children) {
+      final childTotals = _calculateRecursiveTotals(child, hierarchy, calculatedTotals);
+      totalQuantity += childTotals['quantity'] as double;
+      (childTotals['costs'] as Map<String, double>).forEach((currency, cost) {
+        totalCosts[currency] = (totalCosts[currency] ?? 0) + cost;
+      });
+    }
 
-        footerContent.add(
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text('ລວມຄ່າໃຊ້ຈ່າຍ (${currency.laoName}): ${NumberFormat("#,##0.##").format(cost)}', style: style),
-              pw.Text('ງົບປະມານ (${currency.laoName}): ${NumberFormat("#,##0.##").format(budget)}', style: style),
-              pw.Text('ຍອດຄົງເຫຼືອ (${currency.laoName}): ${NumberFormat("#,##0.##").format(remaining)}', style: styleBold.copyWith(fontSize: 11)),
-              pw.SizedBox(height: 8),
-            ]
-          )
-        );
-      }
-    });
-
-    return pw.Row(
-      mainAxisAlignment: pw.MainAxisAlignment.end,
-      children: [
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.end,
-          children: footerContent,
-        )
-      ]
-    );
+    final result = {'quantity': totalQuantity, 'costs': totalCosts};
+    calculatedTotals[item.id!] = result;
+    return result;
   }
 }

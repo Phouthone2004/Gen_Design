@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:io';
-
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:collection/collection.dart';
 import '../../data/item_model.dart';
+import '../../data/quarterly_budget_model.dart';
+import '../../data/sub_item_model.dart';
 import '../../logic/home_vm.dart';
+import '../../services/db_service.dart';
 import '../../services/pdf_exporter.dart';
 import '../core/app_styles.dart';
 import '../core/app_currencies.dart';
@@ -51,17 +54,9 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  Future<void> _showCombinedPdfPreview() async {
-    final vm = Provider.of<HomeViewModel>(context, listen: false);
-    final itemsToExport = vm.items.where((item) => item.isIncludedInTotals).toList();
-
-    if (itemsToExport.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ບໍ່ມີໂຄງການຮ່ວມໃຫ້ສົ່ງອອກ')),
-      );
-      return;
-    }
-
+  // ฟังก์ชันสำหรับสร้างและแสดง PDF ฉบับรวม
+  Future<void> _showCombinedPdfPreview(BuildContext context, HomeViewModel vm) async {
+    // แสดง loading indicator
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -69,10 +64,32 @@ class _HomeContentState extends State<HomeContent> {
     );
 
     try {
-      final pdfBytes = await PdfExporter.generateCombinedPdfBytes(itemsToExport, vm);
-      final String fileName = 'รายงานรวมโครงการ_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.pdf';
+      // 1. คัดกรองเอาเฉพาะ "โครงการร่วม"
+      final itemsToExport = vm.items.where((item) => item.isIncludedInTotals).toList();
+      if (itemsToExport.isEmpty) {
+        if(mounted) Navigator.of(context, rootNavigator: true).pop(); // ปิด loading
+        if(mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ບໍ່ມີ "ໂຄງການຮ່ວມ" ໃຫ້ສົ່ງອອກ')),
+          );
+        }
+        return;
+      }
+      
+      // 2. ดึงข้อมูล sub-items และ quarterly budgets ทั้งหมดจากฐานข้อมูล
+      final allSubItems = await DBService.instance.readAllSubItems();
+      final allQuarterlyBudgets = await DBService.instance.readAllQuarterlyBudgets();
+      
+      // 3. เรียกใช้ฟังก์ชันสร้าง PDF โดยส่งข้อมูล 3 ส่วนเข้าไป
+      final pdfBytes = await PdfExporter.generateCombinedPdfBytes(
+        itemsToExport, 
+        allSubItems,
+        allQuarterlyBudgets,
+      );
+      
+      final String fileName = 'Combined_Projects_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
 
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // ปิด loading
 
       if (mounted) {
         Navigator.push(
@@ -86,7 +103,7 @@ class _HomeContentState extends State<HomeContent> {
         );
       }
     } catch (e) {
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // ปิด loading
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('ເກີດຂໍ້ຜິດພາດໃນການສ້າງ PDF: $e')),
@@ -120,12 +137,6 @@ class _HomeContentState extends State<HomeContent> {
                   pinned: true,
                   collapsedHeight: 80.0,
                   actions: [
-                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                    IconButton(
-                      icon: const Icon(Icons.share_outlined, color: AppColors.textOnPrimary),
-                      onPressed: _showCombinedPdfPreview,
-                    ),
-                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     IconButton(
                       icon: Icon(
                         vm.areAmountsVisible ? Icons.visibility : Icons.visibility_off,
@@ -133,6 +144,12 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                       onPressed: vm.toggleAmountVisibility,
                     ),
+                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                    IconButton(
+                      icon: const Icon(Icons.share_outlined, color: AppColors.textOnPrimary),
+                      onPressed: () => _showCombinedPdfPreview(context, vm),
+                    ),
+                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     IconButton(
                       icon: const Icon(Icons.settings_outlined, color: AppColors.textOnPrimary),
                       onPressed: () => showSettingsDialog(context, vm),

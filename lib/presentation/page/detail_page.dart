@@ -170,108 +170,89 @@ class _DetailPageState extends State<DetailPage> {
     return result;
   }
   
-  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-  // ฟังก์ชันนี้จะมาแทนที่ _renameSiblingItems และ _cascadeRenameChildren ทั้งหมด
-  // โดยจะทำการอัปเดตชื่อของไอเท็มและลูกๆ ทั้งหมดในระดับเดียวกันให้ถูกต้อง
-  Future<void> _updateAllTitlesAfterReorder(int? parentId) async {
+  Future<void> _updateAllTitlesAfterReorder(int? childOf) async {
     final db = DBService.instance;
-    // ดึงไอเท็มทั้งหมดในโปรเจกต์นี้มา เพื่อให้มีข้อมูลล่าสุดสำหรับการคำนวณ
-    final allProjectItems = await db.readSubItemsForParent(widget.item.id!);
+    // ดึงข้อมูลทั้งหมดในโปรเจกต์มาใหม่เพื่อให้แน่ใจว่าข้อมูลเป็นปัจจุบันที่สุด
+    List<SubItemModel> allItemsInProject = await db.readSubItemsForParent(widget.item.id!);
 
-    // Queue หรือ "คิว" สำหรับเก็บ ID ของไอเท็มแม่ที่ต้องประมวลผลลูกๆ ของมัน
-    // เราจะเริ่มจาก parentId ที่ได้รับมา (ถ้าเป็น null คือระดับบนสุด)
-    final processingQueue = <int?>[parentId];
-    final processedIds = <int?>{}; // Set สำหรับเก็บ ID ที่ประมวลผลไปแล้ว ป้องกันการทำงานซ้ำซ้อน
+    // สร้าง Map ของ hierarchy ใหม่จากข้อมูลล่าสุด
+    final currentHierarchy = <int?, List<SubItemModel>>{};
+    for (final item in allItemsInProject) {
+      currentHierarchy.putIfAbsent(item.childOf, () => []).add(item);
+    }
+    // จัดเรียงทุกระดับตาม sortOrder
+    currentHierarchy.forEach((key, value) {
+      value.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    });
 
-    while (processingQueue.isNotEmpty) {
-      final currentParentId = processingQueue.removeAt(0);
+    List<SubItemModel> itemsToUpdate = [];
 
-      if (processedIds.contains(currentParentId)) continue;
-      processedIds.add(currentParentId);
-
-      // ค้นหาไอเท็มแม่จากในลิสต์ เพื่อเอา Prefix (เช่น "A.1") มาใช้
-      final parentItem = currentParentId == null
-          ? null
-          : allProjectItems.firstWhereOrNull((item) => item.id == currentParentId);
-
-      // กำหนด Prefix สำหรับลูกๆ ในระดับนี้
-      final parentPrefix = currentParentId == null
-          ? widget.item.title.split('. ').first // ถ้าเป็นระดับบนสุด ให้ใช้ Prefix ของโปรเจกต์หลัก
-          : parentItem!.title.split(' ').first; // ถ้าไม่ใช่ ให้ใช้ Prefix ของแม่มัน
-
-      // ค้นหาลูกๆ ทั้งหมดของแม่ตัวนี้
-      final siblings = allProjectItems.where((item) => item.childOf == currentParentId).toList();
-      if (siblings.isEmpty) continue;
-
-      // เรียงลำดับลูกๆ ตาม sortOrder ที่ถูกต้อง
-      siblings.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-
-      final List<SubItemModel> itemsToUpdate = [];
-
-      // วนลูปเพื่อสร้างชื่อใหม่ให้กับลูกๆ ทุกตัว
-      for (int i = 0; i < siblings.length; i++) {
-        final sibling = siblings[i];
+    // สร้างฟังก์ชันย่อย (recursive function) สำหรับการ rename
+    Future<void> renameChildrenRecursive(int? parentId, String newParentPrefix) async {
+      final children = currentHierarchy[parentId] ?? [];
+      for (int i = 0; i < children.length; i++) {
+        final child = children[i];
         final newIndex = i + 1;
-        final newPrefix = '$parentPrefix.$newIndex';
+        final newFullPrefix = '$newParentPrefix.$newIndex';
         
-        // แยกเอาเฉพาะส่วนของ "คำอธิบาย" (ที่อยู่หลัง Prefix และเว้นวรรค) ออกมา
-        final descriptionPart = sibling.title.contains(' ')
-            ? sibling.title.substring(sibling.title.indexOf(' ') + 1)
-            : '';
+        // แยกเอาเฉพาะส่วนของ "คำอธิบาย" (description part) ออกจาก title เก่า
+        final titleParts = child.title.split(' ');
+        final descriptionPart = titleParts.length > 1 ? titleParts.sublist(1).join(' ') : '';
         
-        final newTitle = '$newPrefix $descriptionPart';
+        final newTitle = '$newFullPrefix $descriptionPart'.trim();
 
-        // ถ้าชื่อใหม่ไม่ตรงกับชื่อเก่า ก็เตรียมอัปเดต
-        if (sibling.title != newTitle) {
-          final updatedItem = sibling.copyWith(title: newTitle);
-          itemsToUpdate.add(updatedItem);
-
-          // อัปเดตข้อมูลในลิสต์ allProjectItems ใน memory ไปด้วยเลย
-          // เพื่อให้การทำงานในรอบถัดไป (สำหรับหลานๆ) ได้ Prefix ที่ถูกต้อง
-          final indexInAllItems = allProjectItems.indexWhere((item) => item.id == updatedItem.id);
-          if (indexInAllItems != -1) {
-            allProjectItems[indexInAllItems] = updatedItem;
-          }
+        // เพิ่ม item ที่ต้องอัปเดต ถ้า title หรือ sortOrder ไม่ตรง
+        if (child.title != newTitle || child.sortOrder != newIndex) {
+          itemsToUpdate.add(child.copyWith(title: newTitle, sortOrder: newIndex));
         }
         
-        // เพิ่ม ID ของลูกตัวนี้เข้าไปในคิว เพื่อที่รอบหน้าจะได้เข้าไปอัปเดต "หลาน" ของมันต่อไป
-        processingQueue.add(sibling.id);
+        // ทำซ้ำกับลูกๆ ของ item นี้ต่อไป
+        await renameChildrenRecursive(child.id, newFullPrefix);
       }
+    }
+    
+    // หา prefix เริ่มต้นของระดับบนสุด
+    final rootPrefix = widget.item.title.split('. ').first;
+    // เริ่มกระบวนการ rename จากระดับบนสุด (childOf == null)
+    await renameChildrenRecursive(null, rootPrefix);
 
-      // ถ้ามีรายการที่ต้องอัปเดตในระดับนี้ ก็สั่งอัปเดตลง DB
-      if (itemsToUpdate.isNotEmpty) {
-        await db.updateSubItems(itemsToUpdate);
-      }
+    // อัปเดตข้อมูลทั้งหมดในครั้งเดียว
+    if (itemsToUpdate.isNotEmpty) {
+      await db.updateSubItems(itemsToUpdate);
     }
   }
 
+
   Future<void> _saveSubItemAndReorder({
     required SubItemModel itemToSave,
-    int? oldSortOrder, 
+    int? oldSortOrder,
   }) async {
     final db = DBService.instance;
     final isEditing = itemToSave.id != null;
     final newSortOrder = itemToSave.sortOrder;
 
+    // ดึงข้อมูลพี่น้อง (siblings) ในระดับเดียวกัน
     List<SubItemModel> allItems = await db.readSubItemsForParent(widget.item.id!);
     List<SubItemModel> siblings = allItems.where((i) => i.childOf == itemToSave.childOf).toList();
 
     List<SubItemModel> itemsToUpdate = [];
 
     if (isEditing) {
+      // กรณีแก้ไข: ถ้ามีการเปลี่ยนลำดับ
       if (oldSortOrder != newSortOrder) {
-        // Remove the item being edited from siblings list to avoid re-shifting itself
-        final originalItem = siblings.firstWhereOrNull((i) => i.id == itemToSave.id);
-        if(originalItem != null) siblings.remove(originalItem);
+        // หา item เดิมใน list
+        final originalItem = siblings.firstWhere((i) => i.id == itemToSave.id);
+        // เอามันออกจาก list ชั่วคราว
+        siblings.remove(originalItem);
 
+        // เลื่อนขึ้น (ลำดับใหม่น้อยกว่าเก่า)
         if (newSortOrder < oldSortOrder!) {
-          // Moving item up
           for (final sibling in siblings) {
             if (sibling.sortOrder >= newSortOrder && sibling.sortOrder < oldSortOrder) {
               itemsToUpdate.add(sibling.copyWith(sortOrder: sibling.sortOrder + 1));
             }
           }
-        } else { // Moving item down
+        } else { // เลื่อนลง (ลำดับใหม่มากกว่าเก่า)
           for (final sibling in siblings) {
             if (sibling.sortOrder > oldSortOrder && sibling.sortOrder <= newSortOrder) {
               itemsToUpdate.add(sibling.copyWith(sortOrder: sibling.sortOrder - 1));
@@ -279,7 +260,8 @@ class _DetailPageState extends State<DetailPage> {
           }
         }
       }
-    } else { // This is a new item
+    } else {
+      // กรณีสร้างใหม่: ขยับ item อื่นๆ ที่มีลำดับมากกว่าหรือเท่ากับออกไป
       for (final sibling in siblings) {
         if (sibling.sortOrder >= newSortOrder) {
           itemsToUpdate.add(sibling.copyWith(sortOrder: sibling.sortOrder + 1));
@@ -287,28 +269,27 @@ class _DetailPageState extends State<DetailPage> {
       }
     }
 
-    // Commit sort order changes for other items
+    // อัปเดตลำดับของพี่น้อง (ถ้ามีการเปลี่ยนแปลง)
     if (itemsToUpdate.isNotEmpty) {
       await db.updateSubItems(itemsToUpdate);
     }
-    
-    // Create or update the main item
+
+    // บันทึก item ที่สร้าง/แก้ไข
     if (isEditing) {
       await db.updateSubItem(itemToSave);
     } else {
       await db.createSubItem(itemToSave);
     }
 
-    // Call the new single function to fix all titles in the hierarchy
+    // เรียกฟังก์ชันเดียวเพื่อ re-name และ re-order ทั้งหมด
     await _updateAllTitlesAfterReorder(itemToSave.childOf);
-    
-    // Reload data for the UI
+
+    // โหลดข้อมูลใหม่ทั้งหมดเพื่อแสดงผล
     await _loadAndStructureSubItems();
     if (mounted) {
       Provider.of<HomeViewModel>(context, listen: false).loadItems();
     }
   }
-  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   @override
   Widget build(BuildContext context) {
@@ -328,6 +309,7 @@ class _DetailPageState extends State<DetailPage> {
         _subItemsTree,
         _hierarchy,
         _calculatedTotals,
+        _quarterlyBudgets, 
       );
       final String fileName = '${item.title.replaceAll(RegExp(r'[^\w\s]+'), '')}.pdf';
 
@@ -625,8 +607,9 @@ class _DetailPageState extends State<DetailPage> {
         Expanded(
           child: Column(
             children: [
+              /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
               SizedBox(
-                height: 120,
+                height: 130, // เพิ่มความสูงของการ์ด
                 child: _isBudgetsLoading
                     ? const Center(
                         child: CircularProgressIndicator(
@@ -655,6 +638,7 @@ class _DetailPageState extends State<DetailPage> {
                         },
                       ),
               ),
+              /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
               if (pageCount > 1)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
@@ -721,34 +705,43 @@ class _DetailPageState extends State<DetailPage> {
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
+          /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
+            // ใช้ spaceBetween เพื่อผลักเนื้อหาบน-ล่างออกจากกัน
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              // จัดกลุ่มเนื้อหาส่วนบน (ชื่องวด, ยอดเงิน) ไว้ใน Column เดียวกัน
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, // ทำให้ Column นี้ใช้พื้นที่เท่าที่จำเป็น
                 children: [
-                  Text(
-                    'ງວດທີ່ ${budget.quarterNumber}',
-                    style: AppTextStyles.subheading.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        'ງວດທີ່ ${budget.quarterNumber}',
+                        style: AppTextStyles.subheading.copyWith(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (budget.notes != null && budget.notes!.isNotEmpty)
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.info_outline, color: Colors.white70, size: 20),
+                          onPressed: () => _showNotesDialog(context, budget.notes!),
+                        ),
+                    ],
                   ),
-                  const Spacer(),
-                  if (budget.notes != null && budget.notes!.isNotEmpty)
-                    IconButton(
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      icon: const Icon(Icons.info_outline, color: Colors.white70, size: 20),
-                      onPressed: () => _showNotesDialog(context, budget.notes!),
-                    ),
+                  const SizedBox(height: 4),
+                  _buildAmountText(Currency.KIP, budget.amountKip, isVisible),
+                  _buildAmountText(Currency.THB, budget.amountThb, isVisible),
+                  _buildAmountText(Currency.USD, budget.amountUsd, isVisible),
                 ],
               ),
-              const SizedBox(height: 4),
-              _buildAmountText(Currency.KIP, budget.amountKip, isVisible),
-              _buildAmountText(Currency.THB, budget.amountThb, isVisible),
-              _buildAmountText(Currency.USD, budget.amountUsd, isVisible),
-              const Spacer(),
+              // ส่วนของวันที่ จะถูกผลักไปอยู่ด้านล่างสุดของการ์ดเสมอ
               if (budget.selectedDate != null)
                 Align(
                   alignment: Alignment.bottomRight,
@@ -759,6 +752,7 @@ class _DetailPageState extends State<DetailPage> {
                 ),
             ],
           ),
+          /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
         ),
       ),
     );
@@ -783,7 +777,9 @@ class _DetailPageState extends State<DetailPage> {
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: double.infinity,
-        height: 120,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        height: 130, // เพิ่มความสูงของปุ่มให้เท่ากัน
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
         decoration: BoxDecoration(
           color: AppColors.primaryLight.withOpacity(0.5),
           borderRadius: BorderRadius.circular(12),
@@ -935,13 +931,10 @@ class _DetailPageState extends State<DetailPage> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
               onPressed: () async {
-                final parentId = subItem.childOf;
                 await _deleteSubItemAndChildren(subItem.id!);
-                /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-                // หลังจากลบแล้ว ให้เรียกฟังก์ชันอัปเดตชื่อใหม่
-                await _updateAllTitlesAfterReorder(parentId);
-                /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
-                await _loadAndStructureSubItems(); // โหลดใหม่
+                // หลังจากลบแล้ว ก็ทำการ re-order และ re-name ทั้งหมด
+                await _updateAllTitlesAfterReorder(subItem.childOf);
+                await _loadAndStructureSubItems(); // โหลดโครงสร้างใหม่
                 if (mounted) {
                   Provider.of<HomeViewModel>(context, listen: false).loadItems();
                 }
@@ -1300,8 +1293,6 @@ class _AddEditSubItemDialogState extends State<_AddEditSubItemDialog> {
       if (widget.childOf == null) {
         _titlePrefix = widget.mainItem.title.split('. ').first;
       } else {
-        // This logic needs all items, not just hierarchy, to be safe.
-        // However, for dialog init, this should be okay as hierarchy is passed in.
         final parentItem = widget.hierarchy.values.expand((list) => list).firstWhere((item) => item.id == widget.childOf);
         _titlePrefix = parentItem.title.split(' ').first;
       }
@@ -1367,22 +1358,22 @@ class _AddEditSubItemDialogState extends State<_AddEditSubItemDialog> {
         _costs[i].amount = double.tryParse(_costAmountControllers[i].text.replaceAll(',', '')) ?? 0.0;
       }
 
-      // Title will be constructed by the backend logic, we just need to pass the description part
-      final descriptionPart = _titleController.text.trim();
-      // We pass a temporary title, the real one is set in _saveSubItemAndReorder
-      final tempTitle = '${_titlePrefix}.x $descriptionPart';
+      final newSortOrder = int.tryParse(_sortOrderController.text) ?? 999;
+      // เราจะไม่สร้าง title ที่นี่แล้ว จะปล่อยให้ฟังก์ชัน _updateAllTitlesAfterReorder จัดการ
+      // เพื่อให้แน่ใจว่า title จะถูกต้องเสมอหลังจากการจัดเรียงใหม่
+      final tempTitle = widget.existingSubItem?.title ?? _titleController.text;
 
       final subItemToSave = SubItemModel(
         id: widget.existingSubItem?.id,
         parentId: widget.mainItem.id!,
         childOf: widget.childOf,
-        title: widget.existingSubItem?.title ?? tempTitle, // Use old title to preserve description part
+        title: tempTitle, // ใช้ title ชั่วคราวไปก่อน
         description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
         quantity: double.tryParse(_quantityController.text),
         unit: _selectedUnit,
         selectedDate: _selectedDate,
         costs: _costs.where((c) => c.description.isNotEmpty && c.amount > 0).toList(),
-        sortOrder: int.tryParse(_sortOrderController.text) ?? 999,
+        sortOrder: newSortOrder,
       );
 
       await widget.onSave(itemToSave: subItemToSave, oldSortOrder: _oldSortOrder);
