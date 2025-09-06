@@ -43,9 +43,20 @@ class _DetailPageState extends State<DetailPage> {
   bool _isBudgetsLoading = true;
   int _currentPageIndex = 0;
 
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // สร้าง State variable เพื่อเก็บ ItemModel ปัจจุบัน
+  // เพื่อให้สามารถอัปเดตข้อมูล Budget ในหน้านี้ได้แบบ Real-time
+  late ItemModel _currentItem;
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+
+
   @override
   void initState() {
     super.initState();
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // กำหนดค่าเริ่มต้นให้กับ _currentItem จาก widget
+    _currentItem = widget.item;
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
     _scrollController.addListener(_onScroll);
     _pageController = PageController();
     _loadAllData();
@@ -72,41 +83,70 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _loadAllData() async {
     await _loadAndStructureSubItems();
-    await _loadQuarterlyBudgets(widget.item);
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // เปลี่ยนไปใช้ _currentItem แทน widget.item และลบพารามิเตอร์ออก
+    await _loadQuarterlyBudgets();
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
-  Future<void> _loadQuarterlyBudgets(ItemModel item) async {
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+  // แก้ไขฟังก์ชันนี้ทั้งหมด ไม่ต้องรับพารามิเตอร์แล้ว
+  Future<void> _loadQuarterlyBudgets() async {
     setState(() => _isBudgetsLoading = true);
     var budgets = await DBService.instance.readQuarterlyBudgetsForParent(
-      widget.item.id!,
+      _currentItem.id!,
     );
 
+    // ถ้าไม่มี budget เลย (กรณีสร้างโปรเจกต์ใหม่) ให้สร้างงวดที่ 1 อัตโนมัติ
     if (budgets.isEmpty) {
       final firstQuarter = QuarterlyBudgetModel(
-        parentId: widget.item.id!,
+        parentId: _currentItem.id!,
         quarterNumber: 1,
-        amountKip: item.amount,
-        amountThb: item.amountThb,
-        amountUsd: item.amountUsd,
+        amountKip: _currentItem.amount,
+        amountThb: _currentItem.amountThb,
+        amountUsd: _currentItem.amountUsd,
       );
       final createdBudget = await DBService.instance.createQuarterlyBudget(
         firstQuarter,
       );
       budgets = [createdBudget];
     }
+    
+    // คำนวณยอดรวม Budget ใหม่จากทุกงวด
+    double totalKip = budgets.fold(0.0, (sum, q) => sum + q.amountKip);
+    double totalThb = budgets.fold(0.0, (sum, q) => sum + q.amountThb);
+    double totalUsd = budgets.fold(0.0, (sum, q) => sum + q.amountUsd);
 
+    // อัปเดต State ด้วยข้อมูลใหม่ทั้งหมดในครั้งเดียว
     setState(() {
       _quarterlyBudgets = budgets;
+      // [REALTIME-FIX] สร้าง instance ของ ItemModel ใหม่ด้วยยอด Budget ที่คำนวณล่าสุด
+      // แล้วอัปเดต State variable ของเรา นี่คือหัวใจของการแก้ไข
+      _currentItem = _currentItem.copyWith(
+        amount: totalKip,
+        amountThb: totalThb,
+        amountUsd: totalUsd,
+      );
       _isBudgetsLoading = false;
       _currentPageIndex = budgets.isNotEmpty ? budgets.length - 1 : 0;
-      _pageController = PageController(initialPage: _currentPageIndex);
+      
+      // อัปเดต PageController ให้แสดงหน้าที่ถูกต้อง
+      if (_pageController.hasClients && _pageController.page?.round() != _currentPageIndex) {
+         _pageController.jumpToPage(_currentPageIndex);
+      } else if (!_pageController.hasClients){
+         _pageController = PageController(initialPage: _currentPageIndex);
+      }
     });
   }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
+
 
   Future<void> _loadAndStructureSubItems() async {
     try {
       final allSubItems = await DBService.instance.readSubItemsForParent(
-        widget.item.id!,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        _currentItem.id!, // เปลี่ยนมาใช้ _currentItem
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       );
 
       final hierarchy = <int?, List<SubItemModel>>{};
@@ -159,7 +199,8 @@ class _DetailPageState extends State<DetailPage> {
         hierarchy,
         calculatedTotals,
       );
-      totalQuantity += childTotals['quantity'] as double;
+      // [FIX] เราไม่ต้องการรวม Quantity ของรายการลูก ให้แสดงแค่ของตัวเองพอ
+      // totalQuantity += childTotals['quantity'] as double;
       (childTotals['costs'] as Map<String, double>).forEach((currency, cost) {
         totalCosts[currency] = (totalCosts[currency] ?? 0) + cost;
       });
@@ -173,7 +214,7 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _updateAllTitlesAfterReorder(int? childOf) async {
     final db = DBService.instance;
     // ดึงข้อมูลทั้งหมดในโปรเจกต์มาใหม่เพื่อให้แน่ใจว่าข้อมูลเป็นปัจจุบันที่สุด
-    List<SubItemModel> allItemsInProject = await db.readSubItemsForParent(widget.item.id!);
+    List<SubItemModel> allItemsInProject = await db.readSubItemsForParent(_currentItem.id!);
 
     // สร้าง Map ของ hierarchy ใหม่จากข้อมูลล่าสุด
     final currentHierarchy = <int?, List<SubItemModel>>{};
@@ -212,7 +253,7 @@ class _DetailPageState extends State<DetailPage> {
     }
     
     // หา prefix เริ่มต้นของระดับบนสุด
-    final rootPrefix = widget.item.title.split('. ').first;
+    final rootPrefix = _currentItem.title.split('. ').first;
     // เริ่มกระบวนการ rename จากระดับบนสุด (childOf == null)
     await renameChildrenRecursive(null, rootPrefix);
 
@@ -232,7 +273,7 @@ class _DetailPageState extends State<DetailPage> {
     final newSortOrder = itemToSave.sortOrder;
 
     // ดึงข้อมูลพี่น้อง (siblings) ในระดับเดียวกัน
-    List<SubItemModel> allItems = await db.readSubItemsForParent(widget.item.id!);
+    List<SubItemModel> allItems = await db.readSubItemsForParent(_currentItem.id!);
     List<SubItemModel> siblings = allItems.where((i) => i.childOf == itemToSave.childOf).toList();
 
     List<SubItemModel> itemsToUpdate = [];
@@ -293,7 +334,10 @@ class _DetailPageState extends State<DetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    return _buildDetailContent(context, widget.item);
+    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+    // เปลี่ยนไปใช้ _currentItem แทน widget.item
+    return _buildDetailContent(context, _currentItem);
+    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
   }
 
   Future<void> _showPdfPreview(ItemModel item) async {
@@ -368,7 +412,9 @@ class _DetailPageState extends State<DetailPage> {
               onPressed: () async {
                 final bool? result = await _showAddEditSubItemDialog(
                   context,
-                  item: item,
+                  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                  item: _currentItem, // เปลี่ยนไปใช้ _currentItem
+                  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                   childOf: null,
                 );
                 if (result == true) {
@@ -553,7 +599,9 @@ class _DetailPageState extends State<DetailPage> {
                 onAddChild: () async {
                   final bool? result = await _showAddEditSubItemDialog(
                     context,
-                    item: mainItem,
+                    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+                    item: _currentItem, // เปลี่ยนไปใช้ _currentItem
+                    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
                     childOf: subItem.id,
                   );
                   if (result == true) {
@@ -607,7 +655,6 @@ class _DetailPageState extends State<DetailPage> {
         Expanded(
           child: Column(
             children: [
-              /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
               SizedBox(
                 height: 130, // เพิ่มความสูงของการ์ด
                 child: _isBudgetsLoading
@@ -638,7 +685,6 @@ class _DetailPageState extends State<DetailPage> {
                         },
                       ),
               ),
-              /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
               if (pageCount > 1)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
@@ -689,7 +735,9 @@ class _DetailPageState extends State<DetailPage> {
           );
           if (result is QuarterlyBudgetModel) {
             await DBService.instance.updateQuarterlyBudget(result);
-            await _loadQuarterlyBudgets(item);
+            /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+            await _loadQuarterlyBudgets(); // เรียกใช้ฟังก์ชันที่แก้ไขแล้ว
+            /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
             vm.loadItems();
           } else if (result == 'DELETE') {
             final bool? confirmDelete = await _showDeleteQuarterConfirmation(
@@ -698,14 +746,15 @@ class _DetailPageState extends State<DetailPage> {
             );
             if (confirmDelete == true) {
               await DBService.instance.deleteQuarterlyBudget(budget.id!);
-              await _loadQuarterlyBudgets(item);
+              /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+              await _loadQuarterlyBudgets(); // เรียกใช้ฟังก์ชันที่แก้ไขแล้ว
+              /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
               vm.loadItems();
             }
           }
         },
         child: Padding(
           padding: const EdgeInsets.all(12.0),
-          /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             // ใช้ spaceBetween เพื่อผลักเนื้อหาบน-ล่างออกจากกัน
@@ -752,7 +801,6 @@ class _DetailPageState extends State<DetailPage> {
                 ),
             ],
           ),
-          /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
         ),
       ),
     );
@@ -770,16 +818,16 @@ class _DetailPageState extends State<DetailPage> {
         );
         if (newBudget is QuarterlyBudgetModel) {
           await DBService.instance.createQuarterlyBudget(newBudget);
-          await _loadQuarterlyBudgets(item);
+          /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+          await _loadQuarterlyBudgets(); // เรียกใช้ฟังก์ชันที่แก้ไขแล้ว
+          /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
           vm.loadItems();
         }
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: double.infinity,
-        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
         height: 130, // เพิ่มความสูงของปุ่มให้เท่ากัน
-        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
         decoration: BoxDecoration(
           color: AppColors.primaryLight.withOpacity(0.5),
           borderRadius: BorderRadius.circular(12),
@@ -1894,3 +1942,4 @@ class _SubItemCardState extends State<SubItemCard> {
     );
   }
 }
+

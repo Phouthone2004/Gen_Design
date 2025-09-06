@@ -61,6 +61,7 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
   Map<String, dynamic> _calculateRecursiveTotals(
     SubItemModel item,
     Map<int?, List<SubItemModel>> hierarchy,
@@ -73,17 +74,16 @@ class HomeViewModel extends ChangeNotifier {
     double totalQuantity = item.quantity ?? 0;
     final totalCosts = { for (var c in Currency.values) c.code : 0.0 };
 
-    /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
     // เปลี่ยนมาวนลูปอ่านค่าใช้จ่ายจาก List<CostModel> แทน
     for (final cost in item.costs) {
       totalCosts[cost.currency] = (totalCosts[cost.currency] ?? 0) + cost.amount;
     }
-    /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
     final children = hierarchy[item.id] ?? [];
     for (final child in children) {
       final childTotals = _calculateRecursiveTotals(child, hierarchy, calculatedTotals);
-      totalQuantity += childTotals['quantity'] as double;
+      // [FIX] เราไม่ต้องการรวม Quantity ของรายการลูก ให้แสดงแค่ของตัวเองพอ
+      // totalQuantity += childTotals['quantity'] as double;
       (childTotals['costs'] as Map<String, double>).forEach((currency, cost) {
         totalCosts[currency] = (totalCosts[currency] ?? 0) + cost;
       });
@@ -93,6 +93,7 @@ class HomeViewModel extends ChangeNotifier {
     calculatedTotals[item.id!] = result;
     return result;
   }
+  /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
 
   Future<void> loadItems() async {
     isLoading = true;

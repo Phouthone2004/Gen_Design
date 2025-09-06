@@ -30,17 +30,19 @@ class PdfPreviewPage extends StatelessWidget {
       ),
       body: PdfPreview(
         build: (format) => pdfBytes,
+        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
+        // ปิดการแสดงผล Action และปุ่มตั้งค่าทั้งหมดที่อยู่ด้านล่าง
+        allowPrinting: false,
+        allowSharing: false,
+        canChangeOrientation: false,
         canChangePageFormat: false,
+        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
         canDebug: false,
         loadingWidget: const CircularProgressIndicator(),
-        /* ------------------ ▼ โค้ดที่ต้องเพิ่ม/แก้ไข ▼ ------------------ */
-        // แก้ไขรูปแบบการเขียน callback ของ errorWidget
         onError: (context, error) {
           debugPrint('PDF Preview error: $error');
           return const Center(child: Text('ບໍ່ສາມາດເບິ່ງ PDF ໄດ້'));
         },
-
-        /* ------------------ ▲ จบส่วนโค้ดที่เพิ่ม/แก้ไข ▲ ------------------ */
       ),
     );
   }
